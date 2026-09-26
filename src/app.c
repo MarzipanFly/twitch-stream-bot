@@ -8,17 +8,515 @@
 #include "http_client.h"
 
 #include "twitch_auth.h"
+#include "twitch_refresh.h"
 #include "twitch_api.h"
 #include "twitch_user.h"
+
+#include "token_store.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <windows.h>
 
 
+static void copy_token_to_config(
+    TwitchConfig *config,
+    const TwitchAuthToken *token
+)
+{
+    snprintf(
+        config->access_token,
+        sizeof(config->access_token),
+        "%s",
+        token->access_token
+    );
+
+
+    snprintf(
+        config->refresh_token,
+        sizeof(config->refresh_token),
+        "%s",
+        token->refresh_token
+    );
+}
+
+
+static BotResult validate_current_token(
+    TwitchConfig *config
+)
+{
+    TwitchTokenValidation validation =
+        {0};
+
+    BotResult result;
+
+
+    result =
+        twitch_auth_validate_token(
+            config->access_token,
+            &validation
+        );
+
+
+    if (result != BOT_OK)
+    {
+        return result;
+    }
+
+
+    /*
+     * Токен должен принадлежать
+     * нашему Twitch Application.
+     */
+    if (strcmp(
+            validation.client_id,
+            config->client_id) != 0)
+    {
+        log_error(
+            "Stored Twitch token belongs to another Client ID"
+        );
+
+
+        return BOT_ERR_AUTH;
+    }
+
+
+    log_info(
+        "Twitch access token is valid"
+    );
+
+
+    log_info(
+        "Authorized Twitch account: %s",
+        validation.login
+    );
+
+
+    log_info(
+        "Authorized Twitch user ID: %s",
+        validation.user_id
+    );
+
+
+    log_info(
+        "Token expires in %d seconds",
+        validation.expires_in
+    );
+
+
+    return BOT_OK;
+}
+
+
+static BotResult run_device_authorization(
+    const TwitchConfig *config,
+    TwitchAuthToken *token
+)
+{
+    TwitchDeviceCode device =
+        {0};
+
+    BotResult result;
+
+    int elapsed = 0;
+    int interval;
+
+
+    log_info(
+        "Starting Twitch Device Code authorization..."
+    );
+
+
+    result =
+        twitch_auth_request_device_code(
+            config,
+            &device
+        );
+
+
+    if (result != BOT_OK)
+    {
+        return result;
+    }
+
+
+    log_info(
+        "Twitch authorization code received successfully"
+    );
+
+
+    log_info(
+        "Authorization code: %s",
+        device.user_code
+    );
+
+
+    log_info(
+        "Open this URL:"
+    );
+
+
+    log_info(
+        "%s",
+        device.verification_uri
+    );
+
+
+    log_info(
+        "Code expires in %d seconds",
+        device.expires_in
+    );
+
+
+    interval =
+        device.interval > 0
+            ? device.interval
+            : 5;
+
+
+    log_info(
+        "Waiting for Twitch authorization..."
+    );
+
+
+    result =
+        BOT_AUTH_PENDING;
+
+
+    while (
+        elapsed <
+        device.expires_in)
+    {
+        Sleep(
+            (DWORD)interval *
+            1000
+        );
+
+
+        elapsed +=
+            interval;
+
+
+        result =
+            twitch_auth_poll_token(
+                config,
+                &device,
+                token
+            );
+
+
+        if (result == BOT_OK)
+        {
+            log_info(
+                "Twitch authorization completed successfully"
+            );
+
+
+            log_info(
+                "Access token received"
+            );
+
+
+            log_info(
+                "Refresh token received"
+            );
+
+
+            return BOT_OK;
+        }
+
+
+        if (result ==
+            BOT_AUTH_PENDING)
+        {
+            log_debug(
+                "Twitch authorization pending..."
+            );
+
+
+            continue;
+        }
+
+
+        return result;
+    }
+
+
+    log_error(
+        "Twitch authorization code expired"
+    );
+
+
+    return BOT_ERR_AUTH;
+}
+
+
+static BotResult ensure_twitch_auth(
+    AppConfig *config
+)
+{
+    TwitchAuthToken token =
+        {0};
+
+    TwitchAuthToken refreshed_token =
+        {0};
+
+    BotResult result;
+
+    int have_stored_token = 0;
+
+
+    /*
+     * ============================================================
+     * Сначала пробуем достать токены из DPAPI-хранилища.
+     * ============================================================
+     */
+
+    result =
+        token_store_load(
+            &token
+        );
+
+
+    if (result == BOT_OK)
+    {
+        have_stored_token = 1;
+
+
+        log_info(
+            "Stored Twitch OAuth tokens loaded"
+        );
+
+
+        copy_token_to_config(
+            &config->twitch,
+            &token
+        );
+    }
+    else if (result != BOT_ERR_FILE)
+    {
+        /*
+         * Файл существует, но повреждён
+         * или его невозможно расшифровать.
+         */
+        log_warning(
+            "Stored Twitch OAuth tokens are invalid"
+        );
+
+
+        token_store_delete();
+    }
+
+
+    /*
+     * ============================================================
+     * Если токены нашли — проверяем access_token.
+     * ============================================================
+     */
+
+    if (have_stored_token)
+    {
+        result =
+            validate_current_token(
+                &config->twitch
+            );
+
+
+        /*
+         * Всё хорошо.
+         */
+        if (result == BOT_OK)
+        {
+            log_info(
+                "Using stored Twitch OAuth session"
+            );
+
+
+            return BOT_OK;
+        }
+
+
+        /*
+         * Если это не AUTH-ошибка,
+         * значит проблема другого типа.
+         */
+        if (result !=
+            BOT_ERR_AUTH)
+        {
+            return result;
+        }
+
+
+        /*
+         * ========================================================
+         * Access token больше невалиден.
+         *
+         * Пробуем refresh_token.
+         * ========================================================
+         */
+
+        if (token.refresh_token[0] !=
+            '\0')
+        {
+            log_warning(
+                "Twitch access token is invalid; trying refresh token"
+            );
+
+
+            result =
+                twitch_refresh_access_token(
+                    &config->twitch,
+                    token.refresh_token,
+                    &refreshed_token
+                );
+
+
+            if (result == BOT_OK)
+            {
+                /*
+                 * ВАЖНО:
+                 *
+                 * старый refresh token после обмена
+                 * больше использовать нельзя.
+                 *
+                 * Поэтому сразу сохраняем новую пару.
+                 */
+                result =
+                    token_store_save(
+                        &refreshed_token
+                    );
+
+
+                if (result != BOT_OK)
+                {
+                    log_warning(
+                        "New Twitch tokens could not be saved"
+                    );
+                }
+
+
+                copy_token_to_config(
+                    &config->twitch,
+                    &refreshed_token
+                );
+
+
+                result =
+                    validate_current_token(
+                        &config->twitch
+                    );
+
+
+                if (result == BOT_OK)
+                {
+                    log_info(
+                        "Twitch OAuth session refreshed successfully"
+                    );
+
+
+                    return BOT_OK;
+                }
+            }
+        }
+
+
+        /*
+         * Refresh не помог.
+         *
+         * Удаляем старое хранилище
+         * и запускаем Device Code Flow.
+         */
+        log_warning(
+            "Stored Twitch authorization cannot be restored"
+        );
+
+
+        token_store_delete();
+
+
+        config->twitch.access_token[0] =
+            '\0';
+
+
+        config->twitch.refresh_token[0] =
+            '\0';
+    }
+
+
+    /*
+     * ============================================================
+     * Нет рабочих токенов.
+     *
+     * Запускаем браузерную авторизацию.
+     * ============================================================
+     */
+
+    memset(
+        &token,
+        0,
+        sizeof(token)
+    );
+
+
+    result =
+        run_device_authorization(
+            &config->twitch,
+            &token
+        );
+
+
+    if (result != BOT_OK)
+    {
+        return result;
+    }
+
+
+    /*
+     * СРАЗУ сохраняем пару токенов.
+     */
+    result =
+        token_store_save(
+            &token
+        );
+
+
+    if (result != BOT_OK)
+    {
+        log_warning(
+            "Twitch tokens were received but could not be saved"
+        );
+    }
+
+
+    copy_token_to_config(
+        &config->twitch,
+        &token
+    );
+
+
+    /*
+     * Проверяем только что полученный token.
+     */
+    result =
+        validate_current_token(
+            &config->twitch
+        );
+
+
+    if (result != BOT_OK)
+    {
+        return result;
+    }
+
+
+    return BOT_OK;
+}
+
+
 int app_run(void)
 {
     AppConfig config;
+
     BotResult result;
 
 
@@ -28,9 +526,10 @@ int app_run(void)
      * ============================================================
      */
 
-    result = platform_create_directory(
-        "logs"
-    );
+    result =
+        platform_create_directory(
+            "logs"
+        );
 
 
     if (result != BOT_OK)
@@ -39,6 +538,7 @@ int app_run(void)
             stderr,
             "Failed to create logs directory\n"
         );
+
 
         return 1;
     }
@@ -51,13 +551,13 @@ int app_run(void)
      */
 
     if (logger_init(
-            "logs/bot.log"
-        ) != 0)
+            "logs/bot.log") != 0)
     {
         fprintf(
             stderr,
             "Failed to initialize logger\n"
         );
+
 
         return 1;
     }
@@ -73,9 +573,16 @@ int app_run(void)
     );
 
 
-    result = platform_create_directory(
-        "data"
-    );
+    /*
+     * ============================================================
+     * DATA DIRECTORY
+     * ============================================================
+     */
+
+    result =
+        platform_create_directory(
+            "data"
+        );
 
 
     if (result != BOT_OK)
@@ -103,10 +610,11 @@ int app_run(void)
      * ============================================================
      */
 
-    result = config_load(
-        "config.ini",
-        &config
-    );
+    result =
+        config_load(
+            "config.ini",
+            &config
+        );
 
 
     if (result != BOT_OK)
@@ -124,9 +632,10 @@ int app_run(void)
     }
 
 
-    result = config_validate(
-        &config
-    );
+    result =
+        config_validate(
+            &config
+        );
 
 
     if (result != BOT_OK)
@@ -161,10 +670,8 @@ int app_run(void)
     );
 
 
-    /*
-     * Client ID уже обязателен.
-     */
-    if (config.twitch.client_id[0] == '\0')
+    if (config.twitch.client_id[0] ==
+        '\0')
     {
         log_error(
             "Twitch Client ID is not configured"
@@ -178,15 +685,8 @@ int app_run(void)
     }
 
 
-    if (config.twitch.access_token[0] == '\0')
-    {
-        log_warning(
-            "Twitch access token is not configured yet"
-        );
-    }
-
-
-    if (config.telegram.bot_token[0] == '\0')
+    if (config.telegram.bot_token[0] ==
+        '\0')
     {
         log_warning(
             "Telegram bot token is not configured yet"
@@ -211,7 +711,8 @@ int app_run(void)
      */
 
     {
-        HttpResponse response = {0};
+        HttpResponse response =
+            {0};
 
 
         log_info(
@@ -219,12 +720,13 @@ int app_run(void)
         );
 
 
-        result = http_get(
-            L"example.com",
-            L"/",
-            NULL,
-            &response
-        );
+        result =
+            http_get(
+                L"example.com",
+                L"/",
+                NULL,
+                &response
+            );
 
 
         if (result != BOT_OK)
@@ -253,13 +755,8 @@ int app_run(void)
         );
 
 
-        log_debug(
-            "Connection response size: %zu bytes",
-            response.body_size
-        );
-
-
-        if (response.status_code != 200)
+        if (response.status_code !=
+            200)
         {
             log_error(
                 "Internet connection test returned HTTP %lu",
@@ -292,296 +789,34 @@ int app_run(void)
 
     /*
      * ============================================================
-     * TWITCH OAUTH
+     * TWITCH AUTH SESSION
      * ============================================================
      */
 
-    if (config.twitch.access_token[0] == '\0')
+    result =
+        ensure_twitch_auth(
+            &config
+        );
+
+
+    if (result != BOT_OK)
     {
-        TwitchDeviceCode device = {0};
-        TwitchAuthToken token = {0};
-
-        int elapsed = 0;
-
-
-        log_info(
-            "Starting Twitch Device Code authorization..."
+        log_error(
+            "Failed to establish Twitch OAuth session: %s",
+            bot_result_to_string(result)
         );
 
 
-        result =
-            twitch_auth_request_device_code(
-                &config.twitch,
-                &device
-            );
+        logger_shutdown();
 
 
-        if (result != BOT_OK)
-        {
-            log_error(
-                "Failed to start Twitch authorization: %s",
-                bot_result_to_string(result)
-            );
-
-
-            logger_shutdown();
-
-
-            return 1;
-        }
-
-
-        log_info(
-            "Twitch authorization code received successfully"
-        );
-
-
-        log_info(
-            "Authorization code: %s",
-            device.user_code
-        );
-
-
-        log_info(
-            "Open this URL:"
-        );
-
-
-        log_info(
-            "%s",
-            device.verification_uri
-        );
-
-
-        log_info(
-            "Code expires in %d seconds",
-            device.expires_in
-        );
-
-
-        log_debug(
-            "Recommended polling interval: %d seconds",
-            device.interval
-        );
-
-
-        log_info(
-            "Waiting for Twitch authorization..."
-        );
-
-
-        result =
-            BOT_AUTH_PENDING;
-
-
-        while (
-            elapsed <
-            device.expires_in
-        )
-        {
-            Sleep(
-                (DWORD)
-                device.interval *
-                1000
-            );
-
-
-            elapsed +=
-                device.interval;
-
-
-            result =
-                twitch_auth_poll_token(
-                    &config.twitch,
-                    &device,
-                    &token
-                );
-
-
-            if (result == BOT_OK)
-            {
-                break;
-            }
-
-
-            if (
-                result ==
-                BOT_AUTH_PENDING
-            )
-            {
-                log_debug(
-                    "Twitch authorization pending..."
-                );
-
-
-                continue;
-            }
-
-
-            log_error(
-                "Twitch authorization failed: %s",
-                bot_result_to_string(result)
-            );
-
-
-            logger_shutdown();
-
-
-            return 1;
-        }
-
-
-        if (result != BOT_OK)
-        {
-            log_error(
-                "Twitch authorization code expired"
-            );
-
-
-            logger_shutdown();
-
-
-            return 1;
-        }
-
-
-        log_info(
-            "Twitch authorization completed successfully"
-        );
-
-
-        log_info(
-            "Access token received"
-        );
-
-
-        log_info(
-            "Refresh token received"
-        );
-
-
-        log_info(
-            "Access token expires in %d seconds",
-            token.expires_in
-        );
-
-
-        /*
-         * Токены не выводим в лог.
-         */
-        snprintf(
-            config.twitch.access_token,
-            sizeof(
-                config.twitch.access_token
-            ),
-            "%s",
-            token.access_token
-        );
-
-
-        snprintf(
-            config.twitch.refresh_token,
-            sizeof(
-                config.twitch.refresh_token
-            ),
-            "%s",
-            token.refresh_token
-        );
-    }
-    else
-    {
-        log_info(
-            "Existing Twitch access token found"
-        );
+        return 1;
     }
 
 
     /*
      * ============================================================
-     * TOKEN VALIDATION
-     * ============================================================
-     */
-
-    {
-        TwitchTokenValidation validation =
-            {0};
-
-
-        result =
-            twitch_auth_validate_token(
-                config.twitch.access_token,
-                &validation
-            );
-
-
-        if (result != BOT_OK)
-        {
-            log_error(
-                "Twitch access token validation failed: %s",
-                bot_result_to_string(result)
-            );
-
-
-            logger_shutdown();
-
-
-            return 1;
-        }
-
-
-        log_info(
-            "Twitch access token is valid"
-        );
-
-
-        log_info(
-            "Authorized Twitch account: %s",
-            validation.login
-        );
-
-
-        log_info(
-            "Authorized Twitch user ID: %s",
-            validation.user_id
-        );
-
-
-        log_info(
-            "Token expires in %d seconds",
-            validation.expires_in
-        );
-
-
-        /*
-         * Проверяем, что токен выдан именно
-         * нашему Twitch Application.
-         */
-        if (strcmp(
-                validation.client_id,
-                config.twitch.client_id
-            ) != 0)
-        {
-            log_error(
-                "Twitch token Client ID does not match config Client ID"
-            );
-
-
-            logger_shutdown();
-
-
-            return 1;
-        }
-
-
-        log_info(
-            "Twitch Client ID matches token"
-        );
-    }
-
-
-    /*
-     * ============================================================
-     * TWITCH HELIX / USERS
+     * TWITCH USER
      * ============================================================
      */
 
@@ -688,10 +923,8 @@ int app_run(void)
         );
 
 
-        if (
-            user.broadcaster_type[0] !=
-            '\0'
-        )
+        if (user.broadcaster_type[0] !=
+            '\0')
         {
             log_info(
                 "Broadcaster type: %s",
@@ -702,18 +935,6 @@ int app_run(void)
         {
             log_info(
                 "Broadcaster type: none"
-            );
-        }
-
-
-        if (
-            user.profile_image_url[0] !=
-            '\0'
-        )
-        {
-            log_debug(
-                "Profile image: %s",
-                user.profile_image_url
             );
         }
 
@@ -736,11 +957,6 @@ int app_run(void)
 
         http_response_free(
             &response
-        );
-
-
-        log_info(
-            "Twitch API test completed successfully"
         );
     }
 

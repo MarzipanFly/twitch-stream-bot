@@ -12,14 +12,16 @@ INCLUDEPATH += \
 SOURCES += \
     src/bot_result.c \
     src/config.c \
-	src/http_client.c \
+    src/http_client.c \
     src/logger.c \
     src/main.c \
     src/app.c \
     src/platform_win.c \
-	src/twitch_api.c \
+    src/token_store.c \
+    src/twitch_api.c \
     src/twitch_auth.c \
-	third_party/cjson/cJSON.c
+    src/twitch_refresh.c \
+    third_party/cjson/cJSON.c
 
 HEADERS += \
     include/app.h \
@@ -28,17 +30,21 @@ HEADERS += \
     include/http_client.h \
     include/logger.h \
     include/platform.h \
+    include/token_store.h \
     include/twitch_api.h \
     include/twitch_auth.h \
-	include/twitch_user.h \
-	third_party/cjson/cJSON.h
+    include/twitch_refresh.h \
+    include/twitch_user.h \
+    third_party/cjson/cJSON.h
 
 win32-g++ {
-	LIBS += -lwinhttp
+    LIBS += -lwinhttp
+    LIBS += -lcrypt32
 }
 
 win32-msvc* {
     LIBS += Winhttp.lib
+    LIBS += Crypt32.lib
 }
 
 DISTFILES += \
