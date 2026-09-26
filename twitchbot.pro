@@ -21,6 +21,7 @@ SOURCES += \
     src/twitch_api.c \
     src/twitch_auth.c \
     src/twitch_refresh.c \
+    src/twitch_stream.c \
     third_party/cjson/cJSON.c
 
 HEADERS += \
@@ -34,6 +35,7 @@ HEADERS += \
     include/twitch_api.h \
     include/twitch_auth.h \
     include/twitch_refresh.h \
+    include/twitch_stream.h \
     include/twitch_user.h \
     third_party/cjson/cJSON.h
 

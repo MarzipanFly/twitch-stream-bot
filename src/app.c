@@ -4,14 +4,12 @@
 #include "config.h"
 #include "bot_result.h"
 #include "platform.h"
-
 #include "http_client.h"
-
 #include "twitch_auth.h"
 #include "twitch_refresh.h"
 #include "twitch_api.h"
 #include "twitch_user.h"
-
+#include "twitch_stream.h"
 #include "token_store.h"
 
 #include <stdio.h>
@@ -960,6 +958,128 @@ int app_run(void)
         );
     }
 
+    /*
+     * ============================================================
+     * CURRENT STREAM STATUS
+     * ============================================================
+     */
+
+    {
+        HttpResponse response =
+            {0};
+
+        TwitchStream stream =
+            {0};
+
+
+        log_info(
+            "Checking Twitch stream status..."
+        );
+
+
+        result =
+            twitch_get_stream(
+                &config.twitch,
+                config.twitch.broadcaster_id,
+                &response
+            );
+
+
+        if (result != BOT_OK)
+        {
+            log_error(
+                "Failed to get Twitch stream status: %s",
+                bot_result_to_string(result)
+            );
+
+
+            http_response_free(
+                &response
+            );
+
+
+            logger_shutdown();
+
+
+            return 1;
+        }
+
+
+        result =
+            twitch_parse_stream_response(
+                response.body,
+                &stream
+            );
+
+
+        if (result != BOT_OK)
+        {
+            log_error(
+                "Failed to parse Twitch stream status: %s",
+                bot_result_to_string(result)
+            );
+
+
+            http_response_free(
+                &response
+            );
+
+
+            logger_shutdown();
+
+
+            return 1;
+        }
+
+
+        if (stream.is_live)
+        {
+            log_info(
+                "Stream status: ONLINE"
+            );
+
+
+            log_info(
+                "Stream title: %s",
+                stream.title
+            );
+
+
+            log_info(
+                "Category: %s",
+                stream.game_name
+            );
+
+
+            log_info(
+                "Viewers: %d",
+                stream.viewer_count
+            );
+
+
+            log_info(
+                "Started at: %s",
+                stream.started_at
+            );
+
+
+            log_info(
+                "Language: %s",
+                stream.language
+            );
+        }
+        else
+        {
+            log_info(
+                "Stream status: OFFLINE"
+            );
+        }
+
+
+        http_response_free(
+            &response
+        );
+    }
 
     log_info(
         "Application initialization completed successfully"
