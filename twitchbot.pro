@@ -17,6 +17,7 @@ SOURCES += \
     src/main.c \
     src/app.c \
     src/platform_win.c \
+    src/telegram_api.c \
     src/token_store.c \
     src/twitch_api.c \
     src/twitch_auth.c \
@@ -31,6 +32,7 @@ HEADERS += \
     include/http_client.h \
     include/logger.h \
     include/platform.h \
+    include/telegram_api.h \
     include/token_store.h \
     include/twitch_api.h \
     include/twitch_auth.h \
