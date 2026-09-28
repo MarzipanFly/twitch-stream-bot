@@ -4,12 +4,15 @@
 #include "config.h"
 #include "bot_result.h"
 #include "platform.h"
+
 #include "http_client.h"
+
 #include "twitch_auth.h"
 #include "twitch_refresh.h"
 #include "twitch_api.h"
 #include "twitch_user.h"
 #include "twitch_stream.h"
+
 #include "token_store.h"
 
 #include <stdio.h>
@@ -17,6 +20,109 @@
 #include <windows.h>
 
 
+#define STREAM_POLL_INTERVAL_SECONDS 30
+
+/*
+ * Twitch требует валидировать OAuth-сессию
+ * при запуске и затем примерно раз в час.
+ */
+#define TOKEN_VALIDATION_INTERVAL_MS \
+    (60ULL * 60ULL * 1000ULL)
+
+
+/*
+ * Флаг завершения программы.
+ *
+ * 0 = продолжаем работать
+ * 1 = пользователь попросил завершить программу
+ */
+static volatile LONG g_stop_requested = 0;
+
+
+/*
+ * ============================================================
+ * CTRL+C HANDLER
+ * ============================================================
+ *
+ * Когда пользователь нажимает Ctrl+C,
+ * Windows вызывает эту функцию.
+ *
+ * Мы не завершаем программу мгновенно,
+ * а просто выставляем флаг.
+ */
+static BOOL WINAPI console_ctrl_handler(
+    DWORD control_type
+)
+{
+    switch (control_type)
+    {
+        case CTRL_C_EVENT:
+        case CTRL_BREAK_EVENT:
+        case CTRL_CLOSE_EVENT:
+
+            InterlockedExchange(
+                &g_stop_requested,
+                1
+            );
+
+            return TRUE;
+
+        default:
+            return FALSE;
+    }
+}
+
+
+/*
+ * Проверка флага остановки.
+ */
+static int stop_requested(void)
+{
+    return
+        InterlockedCompareExchange(
+            &g_stop_requested,
+            0,
+            0
+        ) != 0;
+}
+
+
+/*
+ * ============================================================
+ * INTERRUPTIBLE SLEEP
+ * ============================================================
+ *
+ * Вместо одного Sleep(30000) спим
+ * по одной секунде.
+ *
+ * Поэтому после Ctrl+C программе не придётся
+ * ждать все 30 секунд.
+ */
+static void sleep_interruptible(
+    int seconds
+)
+{
+    int i;
+
+
+    for (i = 0; i < seconds; ++i)
+    {
+        if (stop_requested())
+        {
+            return;
+        }
+
+
+        Sleep(1000);
+    }
+}
+
+
+/*
+ * ============================================================
+ * TOKEN -> CONFIG
+ * ============================================================
+ */
 static void copy_token_to_config(
     TwitchConfig *config,
     const TwitchAuthToken *token
@@ -39,6 +145,11 @@ static void copy_token_to_config(
 }
 
 
+/*
+ * ============================================================
+ * TOKEN VALIDATION
+ * ============================================================
+ */
 static BotResult validate_current_token(
     TwitchConfig *config
 )
@@ -63,8 +174,8 @@ static BotResult validate_current_token(
 
 
     /*
-     * Токен должен принадлежать
-     * нашему Twitch Application.
+     * Проверяем, что токен принадлежит
+     * именно нашему Twitch Application.
      */
     if (strcmp(
             validation.client_id,
@@ -106,6 +217,11 @@ static BotResult validate_current_token(
 }
 
 
+/*
+ * ============================================================
+ * DEVICE CODE AUTHORIZATION
+ * ============================================================
+ */
 static BotResult run_device_authorization(
     const TwitchConfig *config,
     TwitchAuthToken *token
@@ -249,6 +365,19 @@ static BotResult run_device_authorization(
 }
 
 
+/*
+ * ============================================================
+ * ENSURE TWITCH AUTH
+ * ============================================================
+ *
+ * Логика:
+ *
+ * 1. Пытаемся загрузить сохранённые токены.
+ * 2. Проверяем access token.
+ * 3. Если умер — refresh.
+ * 4. Если refresh тоже не работает —
+ *    Device Code Authorization.
+ */
 static BotResult ensure_twitch_auth(
     AppConfig *config
 )
@@ -263,12 +392,6 @@ static BotResult ensure_twitch_auth(
 
     int have_stored_token = 0;
 
-
-    /*
-     * ============================================================
-     * Сначала пробуем достать токены из DPAPI-хранилища.
-     * ============================================================
-     */
 
     result =
         token_store_load(
@@ -293,10 +416,6 @@ static BotResult ensure_twitch_auth(
     }
     else if (result != BOT_ERR_FILE)
     {
-        /*
-         * Файл существует, но повреждён
-         * или его невозможно расшифровать.
-         */
         log_warning(
             "Stored Twitch OAuth tokens are invalid"
         );
@@ -307,11 +426,8 @@ static BotResult ensure_twitch_auth(
 
 
     /*
-     * ============================================================
-     * Если токены нашли — проверяем access_token.
-     * ============================================================
+     * Есть сохранённая OAuth-сессия.
      */
-
     if (have_stored_token)
     {
         result =
@@ -320,9 +436,6 @@ static BotResult ensure_twitch_auth(
             );
 
 
-        /*
-         * Всё хорошо.
-         */
         if (result == BOT_OK)
         {
             log_info(
@@ -335,26 +448,21 @@ static BotResult ensure_twitch_auth(
 
 
         /*
-         * Если это не AUTH-ошибка,
-         * значит проблема другого типа.
+         * Если это не проблема авторизации,
+         * не пытаемся делать refresh.
          */
-        if (result !=
-            BOT_ERR_AUTH)
+        if (result != BOT_ERR_AUTH)
         {
             return result;
         }
 
 
         /*
-         * ========================================================
-         * Access token больше невалиден.
+         * Access token умер.
          *
-         * Пробуем refresh_token.
-         * ========================================================
+         * Пробуем refresh token.
          */
-
-        if (token.refresh_token[0] !=
-            '\0')
+        if (token.refresh_token[0] != '\0')
         {
             log_warning(
                 "Twitch access token is invalid; trying refresh token"
@@ -372,12 +480,11 @@ static BotResult ensure_twitch_auth(
             if (result == BOT_OK)
             {
                 /*
-                 * ВАЖНО:
+                 * Twitch может вернуть новый
+                 * refresh token.
                  *
-                 * старый refresh token после обмена
-                 * больше использовать нельзя.
-                 *
-                 * Поэтому сразу сохраняем новую пару.
+                 * Поэтому сразу сохраняем
+                 * новую пару.
                  */
                 result =
                     token_store_save(
@@ -418,12 +525,6 @@ static BotResult ensure_twitch_auth(
         }
 
 
-        /*
-         * Refresh не помог.
-         *
-         * Удаляем старое хранилище
-         * и запускаем Device Code Flow.
-         */
         log_warning(
             "Stored Twitch authorization cannot be restored"
         );
@@ -442,13 +543,10 @@ static BotResult ensure_twitch_auth(
 
 
     /*
-     * ============================================================
-     * Нет рабочих токенов.
+     * OAuth-сессии нет.
      *
-     * Запускаем браузерную авторизацию.
-     * ============================================================
+     * Запускаем Device Code Flow.
      */
-
     memset(
         &token,
         0,
@@ -469,9 +567,6 @@ static BotResult ensure_twitch_auth(
     }
 
 
-    /*
-     * СРАЗУ сохраняем пару токенов.
-     */
     result =
         token_store_save(
             &token
@@ -492,9 +587,6 @@ static BotResult ensure_twitch_auth(
     );
 
 
-    /*
-     * Проверяем только что полученный token.
-     */
     result =
         validate_current_token(
             &config->twitch
@@ -511,6 +603,438 @@ static BotResult ensure_twitch_auth(
 }
 
 
+/*
+ * ============================================================
+ * GET CURRENT STREAM
+ * ============================================================
+ *
+ * Маленькая вспомогательная функция.
+ *
+ * twitch_get_stream()
+ *      получает JSON
+ *
+ * twitch_parse_stream_response()
+ *      превращает JSON в TwitchStream
+ */
+static BotResult get_current_stream(
+    const TwitchConfig *config,
+    TwitchStream *stream
+)
+{
+    HttpResponse response =
+        {0};
+
+    BotResult result;
+
+
+    result =
+        twitch_get_stream(
+            config,
+            config->broadcaster_id,
+            &response
+        );
+
+
+    if (result != BOT_OK)
+    {
+        http_response_free(
+            &response
+        );
+
+
+        return result;
+    }
+
+
+    result =
+        twitch_parse_stream_response(
+            response.body,
+            stream
+        );
+
+
+    http_response_free(
+        &response
+    );
+
+
+    return result;
+}
+
+
+/*
+ * ============================================================
+ * STREAM INFORMATION
+ * ============================================================
+ */
+static void log_stream_information(
+    const TwitchStream *stream
+)
+{
+    if (stream == NULL)
+    {
+        return;
+    }
+
+
+    log_info(
+        "Stream title: %s",
+        stream->title
+    );
+
+
+    log_info(
+        "Category: %s",
+        stream->game_name
+    );
+
+
+    log_info(
+        "Viewers: %d",
+        stream->viewer_count
+    );
+
+
+    log_info(
+        "Started at: %s",
+        stream->started_at
+    );
+
+
+    log_info(
+        "Language: %s",
+        stream->language
+    );
+}
+
+
+/*
+ * ============================================================
+ * STREAM MONITOR
+ * ============================================================
+ *
+ * Именно здесь программа становится
+ * постоянно работающим ботом.
+ */
+static BotResult monitor_stream(
+    AppConfig *config
+)
+{
+    TwitchStream stream =
+        {0};
+
+    TwitchStream current_stream =
+        {0};
+
+    BotResult result;
+
+    int previous_live_state;
+
+    ULONGLONG last_token_validation;
+
+
+    /*
+     * ------------------------------------------------------------
+     * Получаем состояние на момент запуска.
+     * ------------------------------------------------------------
+     *
+     * ВАЖНО:
+     *
+     * если бот запустился, а стрим уже идёт,
+     * это НЕ считается событием STREAM STARTED.
+     */
+    result =
+        get_current_stream(
+            &config->twitch,
+            &stream
+        );
+
+
+    if (result != BOT_OK)
+    {
+        return result;
+    }
+
+
+    previous_live_state =
+        stream.is_live;
+
+
+    if (stream.is_live)
+    {
+        log_info(
+            "Initial stream status: ONLINE"
+        );
+
+
+        log_stream_information(
+            &stream
+        );
+    }
+    else
+    {
+        log_info(
+            "Initial stream status: OFFLINE"
+        );
+    }
+
+
+    log_info(
+        "Stream monitor started"
+    );
+
+
+    log_info(
+        "Polling interval: %d seconds",
+        STREAM_POLL_INTERVAL_SECONDS
+    );
+
+
+    log_info(
+        "Press Ctrl+C to stop the bot"
+    );
+
+
+    /*
+     * Мы только что проверили OAuth при запуске.
+     */
+    last_token_validation =
+        GetTickCount64();
+
+
+    /*
+     * ============================================================
+     * MAIN BOT LOOP
+     * ============================================================
+     */
+    while (!stop_requested())
+    {
+        sleep_interruptible(
+            STREAM_POLL_INTERVAL_SECONDS
+        );
+
+
+        if (stop_requested())
+        {
+            break;
+        }
+
+
+        /*
+         * --------------------------------------------------------
+         * HOURLY TOKEN VALIDATION
+         * --------------------------------------------------------
+         *
+         * Twitch требует проверять токен
+         * не только при запуске, но и периодически.
+         */
+        if (
+            GetTickCount64() -
+            last_token_validation
+            >=
+            TOKEN_VALIDATION_INTERVAL_MS)
+        {
+            log_info(
+                "Performing scheduled Twitch token validation..."
+            );
+
+
+            result =
+                ensure_twitch_auth(
+                    config
+                );
+
+
+            if (result != BOT_OK)
+            {
+                log_error(
+                    "Scheduled Twitch authentication check failed: %s",
+                    bot_result_to_string(result)
+                );
+
+
+                return result;
+            }
+
+
+            last_token_validation =
+                GetTickCount64();
+        }
+
+
+        memset(
+            &current_stream,
+            0,
+            sizeof(current_stream)
+        );
+
+
+        result =
+            get_current_stream(
+                &config->twitch,
+                &current_stream
+            );
+
+
+        /*
+         * --------------------------------------------------------
+         * Если Twitch вернул 401,
+         * пытаемся восстановить OAuth-сессию.
+         * --------------------------------------------------------
+         */
+        if (result == BOT_ERR_AUTH)
+        {
+            log_warning(
+                "Twitch access token was rejected"
+            );
+
+
+            result =
+                ensure_twitch_auth(
+                    config
+                );
+
+
+            if (result != BOT_OK)
+            {
+                log_error(
+                    "Failed to restore Twitch OAuth session: %s",
+                    bot_result_to_string(result)
+                );
+
+
+                return result;
+            }
+
+
+            /*
+             * OAuth восстановлен.
+             *
+             * Повторяем запрос.
+             */
+            result =
+                get_current_stream(
+                    &config->twitch,
+                    &current_stream
+                );
+        }
+
+
+        /*
+         * Временная ошибка сети не должна
+         * убивать постоянно работающего бота.
+         */
+        if (result != BOT_OK)
+        {
+            log_warning(
+                "Failed to check stream status: %s",
+                bot_result_to_string(result)
+            );
+
+
+            continue;
+        }
+
+
+        /*
+         * ========================================================
+         * OFFLINE -> ONLINE
+         * ========================================================
+         */
+        if (
+            previous_live_state == 0 &&
+            current_stream.is_live != 0)
+        {
+            log_info(
+                "========================================"
+            );
+
+
+            log_info(
+                "STREAM STARTED"
+            );
+
+
+            log_info(
+                "========================================"
+            );
+
+
+            log_stream_information(
+                &current_stream
+            );
+
+
+            /*
+             * СЮДА следующим этапом
+             * поставим Telegram sendMessage().
+             */
+        }
+
+
+        /*
+         * ========================================================
+         * ONLINE -> OFFLINE
+         * ========================================================
+         */
+        else if (
+            previous_live_state != 0 &&
+            current_stream.is_live == 0)
+        {
+            log_info(
+                "========================================"
+            );
+
+
+            log_info(
+                "STREAM ENDED"
+            );
+
+
+            log_info(
+                "========================================"
+            );
+        }
+
+
+        /*
+         * Если состояние не изменилось:
+         *
+         * OFFLINE -> OFFLINE
+         * ONLINE  -> ONLINE
+         *
+         * ничего в INFO не спамим.
+         */
+        else
+        {
+            log_debug(
+                "Stream state unchanged: %s",
+                current_stream.is_live
+                    ? "ONLINE"
+                    : "OFFLINE"
+            );
+        }
+
+
+        previous_live_state =
+            current_stream.is_live;
+    }
+
+
+    log_info(
+        "Stream monitor stopped"
+    );
+
+
+    return BOT_OK;
+}
+
+
+/*
+ * ============================================================
+ * APPLICATION
+ * ============================================================
+ */
 int app_run(void)
 {
     AppConfig config;
@@ -569,6 +1093,22 @@ int app_run(void)
     log_info(
         "Platform: Windows"
     );
+
+
+    /*
+     * ============================================================
+     * CTRL+C
+     * ============================================================
+     */
+
+    if (!SetConsoleCtrlHandler(
+            console_ctrl_handler,
+            TRUE))
+    {
+        log_warning(
+            "Failed to install console control handler"
+        );
+    }
 
 
     /*
@@ -668,8 +1208,7 @@ int app_run(void)
     );
 
 
-    if (config.twitch.client_id[0] ==
-        '\0')
+    if (config.twitch.client_id[0] == '\0')
     {
         log_error(
             "Twitch Client ID is not configured"
@@ -683,23 +1222,12 @@ int app_run(void)
     }
 
 
-    if (config.telegram.bot_token[0] ==
-        '\0')
+    if (config.telegram.bot_token[0] == '\0')
     {
         log_warning(
             "Telegram bot token is not configured yet"
         );
     }
-
-
-    log_info(
-        "HTTP client ready"
-    );
-
-
-    log_info(
-        "Twitch API module ready"
-    );
 
 
     /*
@@ -753,8 +1281,7 @@ int app_run(void)
         );
 
 
-        if (response.status_code !=
-            200)
+        if (response.status_code != 200)
         {
             log_error(
                 "Internet connection test returned HTTP %lu",
@@ -787,7 +1314,7 @@ int app_run(void)
 
     /*
      * ============================================================
-     * TWITCH AUTH SESSION
+     * TWITCH AUTH
      * ============================================================
      */
 
@@ -814,7 +1341,7 @@ int app_run(void)
 
     /*
      * ============================================================
-     * TWITCH USER
+     * BROADCASTER INFORMATION
      * ============================================================
      */
 
@@ -857,18 +1384,6 @@ int app_run(void)
 
             return 1;
         }
-
-
-        log_debug(
-            "Twitch HTTP status: %lu",
-            response.status_code
-        );
-
-
-        log_debug(
-            "Twitch response size: %zu bytes",
-            response.body_size
-        );
 
 
         result =
@@ -921,8 +1436,7 @@ int app_run(void)
         );
 
 
-        if (user.broadcaster_type[0] !=
-            '\0')
+        if (user.broadcaster_type[0] != '\0')
         {
             log_info(
                 "Broadcaster type: %s",
@@ -939,9 +1453,7 @@ int app_run(void)
 
         snprintf(
             config.twitch.broadcaster_id,
-            sizeof(
-                config.twitch.broadcaster_id
-            ),
+            sizeof(config.twitch.broadcaster_id),
             "%s",
             user.id
         );
@@ -958,141 +1470,61 @@ int app_run(void)
         );
     }
 
+
     /*
      * ============================================================
-     * CURRENT STREAM STATUS
+     * INITIALIZATION COMPLETE
      * ============================================================
      */
-
-    {
-        HttpResponse response =
-            {0};
-
-        TwitchStream stream =
-            {0};
-
-
-        log_info(
-            "Checking Twitch stream status..."
-        );
-
-
-        result =
-            twitch_get_stream(
-                &config.twitch,
-                config.twitch.broadcaster_id,
-                &response
-            );
-
-
-        if (result != BOT_OK)
-        {
-            log_error(
-                "Failed to get Twitch stream status: %s",
-                bot_result_to_string(result)
-            );
-
-
-            http_response_free(
-                &response
-            );
-
-
-            logger_shutdown();
-
-
-            return 1;
-        }
-
-
-        result =
-            twitch_parse_stream_response(
-                response.body,
-                &stream
-            );
-
-
-        if (result != BOT_OK)
-        {
-            log_error(
-                "Failed to parse Twitch stream status: %s",
-                bot_result_to_string(result)
-            );
-
-
-            http_response_free(
-                &response
-            );
-
-
-            logger_shutdown();
-
-
-            return 1;
-        }
-
-
-        if (stream.is_live)
-        {
-            log_info(
-                "Stream status: ONLINE"
-            );
-
-
-            log_info(
-                "Stream title: %s",
-                stream.title
-            );
-
-
-            log_info(
-                "Category: %s",
-                stream.game_name
-            );
-
-
-            log_info(
-                "Viewers: %d",
-                stream.viewer_count
-            );
-
-
-            log_info(
-                "Started at: %s",
-                stream.started_at
-            );
-
-
-            log_info(
-                "Language: %s",
-                stream.language
-            );
-        }
-        else
-        {
-            log_info(
-                "Stream status: OFFLINE"
-            );
-        }
-
-
-        http_response_free(
-            &response
-        );
-    }
 
     log_info(
         "Application initialization completed successfully"
     );
 
 
+    /*
+     * ============================================================
+     * MAIN BOT LOOP
+     * ============================================================
+     */
+
+    result =
+        monitor_stream(
+            &config
+        );
+
+
+    if (result != BOT_OK)
+    {
+        log_error(
+            "Stream monitor stopped with error: %s",
+            bot_result_to_string(result)
+        );
+    }
+
+
+    /*
+     * ============================================================
+     * SHUTDOWN
+     * ============================================================
+     */
+
     log_info(
         "Application shutdown"
+    );
+
+
+    SetConsoleCtrlHandler(
+        console_ctrl_handler,
+        FALSE
     );
 
 
     logger_shutdown();
 
 
-    return 0;
+    return
+        result == BOT_OK
+            ? 0
+            : 1;
 }
