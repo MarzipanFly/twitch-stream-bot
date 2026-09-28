@@ -216,7 +216,7 @@ BotResult config_load(const char *filename, AppConfig *config)
 {
    FILE *file;
 
-   char line[512];
+   char line[2048];
 
    ConfigSection current_section = SECTION_NONE;
 
