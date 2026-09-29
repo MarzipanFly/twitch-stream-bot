@@ -11,6 +11,8 @@
 #include "twitch_user.h"
 #include "twitch_stream.h"
 #include "token_store.h"
+#include "commands.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <windows.h>
@@ -76,6 +78,7 @@ static int stop_requested(void)
             0
         ) != 0;
 }
+
 /*
  * ============================================================
  * INTERRUPTIBLE SLEEP
@@ -527,6 +530,77 @@ static void log_stream_information(
 
 /*
  * ============================================================
+ * ФОРМИРОВАНИЕ TELEGRAM-УВЕДОМЛЕНИЯ
+ * ============================================================
+ *
+ * Формирует текст уведомление о начале стрима
+ *
+ * Вовзращает:
+ * 1- сообщение сформировано
+ * 0 - произошла ошибка
+ */
+static int build_stream_started_message(
+		const AppConfig *config,
+		const TwitchStream *stream,
+		char *buffer,
+		size_t buffer_size
+)
+{
+	const char *title;
+	const char *game;
+
+	int written;
+
+	if( config==NULL ||
+		stream==NULL ||
+		buffer==NULL ||
+		buffer_size==0)
+	{
+		return 0;
+	}
+
+	title =
+		stream->title[0] != '\0'
+			? stream->title
+			: "Без названия";
+
+	game =
+		stream->game_name[0] != '\0'
+			? stream->game_name
+			: "Категория не указана";
+
+	written =
+		snprintf(
+			buffer,
+			buffer_size,
+
+			"🔴 Стрим начался!\n\n"
+			"🎮 %s\n"
+			"📝 %s\n\n"
+			"🍊 Залетай на стрим:\n"
+			"https://twitch.tv/%s",
+
+			game,
+			title,
+			config->twitch.broadcaster_login
+		);
+
+	if (written < 0 ||
+		(size_t)written >= buffer_size)
+	{
+		log_error(
+			"Failed to build stream notification: message is too long"
+		);
+
+		return 0;
+	}
+
+	return 1;
+}
+
+
+/*
+ * ============================================================
  * TELEGRAM STREAM NOTIFICATION
  * ============================================================
  *
@@ -560,26 +634,16 @@ static void notify_stream_started(
         );
         return;
     }
-    title =
-        stream->title[0] != '\0'
-            ? stream->title
-            : "Без названия";
-    game =
-        stream->game_name[0] != '\0'
-            ? stream->game_name
-            : "Категория не указана";
-    snprintf(
-        message,
-        sizeof(message),
-        "🔴 Стрим начался!\n\n"
-        "🎮 %s\n"
-        "📝 %s\n\n"
-        "🍊 Залетай на стрим:\n"
-        "https://twitch.tv/%s",
-        game,
-        title,
-        config->twitch.broadcaster_login
-    );
+	if (
+		!build_stream_started_message(
+				config,
+				stream,
+				message,
+				sizeof(message))
+		)
+	{
+		return;
+	}
     log_info(
         "Sending stream notification to Telegram..."
     );
@@ -605,6 +669,94 @@ static void notify_stream_started(
     log_info(
         "Telegram stream notification sent"
     );
+}
+
+/*
+ * ============================================================
+ * TEST STREAM
+ * ============================================================
+ *
+ * Создаёт искуссвтеный TwitchStream
+ * и отправляет обычное уведомление в Telegram.
+ *
+ * Никаких запросов к твичу здесь нет.
+ */
+static void run_test_stream(
+		const AppConfig *config,
+		int dry_run
+)
+{
+	TwitchStream stream = {0};
+
+	char message[2048];
+
+	stream.is_live=1;
+
+	snprintf(
+			stream.title,
+			sizeof (stream.title),
+			"%s",
+			"Тестовый запуск TwitchBot"
+	);
+
+	snprintf(
+			stream.game_name,
+			sizeof (stream.game_name),
+			"%s",
+			"Just Chatting"
+	);
+
+	snprintf(
+			stream.language,
+			sizeof (stream.language),
+			"%s",
+			"ru"
+	);
+
+	stream.viewer_count = 42;
+
+	log_info("Running simulated stream start");
+
+	log_stream_information(&stream);
+
+	/*
+	 * Dry Run:
+	 *
+	 * создаём настоящее сообщениеб
+	 * но не отправялем его по сети
+	 */
+	if (dry_run)
+	{
+		if (
+			build_stream_started_message(
+					config,
+					&stream,
+					message,
+					sizeof(message)
+			))
+		{
+			log_info(
+				"Dry run: Telegram mesage would be:"
+			);
+
+			log_info(
+				"\n%s",
+				message
+			);
+		}
+		else
+		{
+			notify_stream_started(
+				config,
+				&stream
+			);
+		}
+	}
+
+	notify_stream_started(config, &stream);
+
+	log_info("Simulated stream strat completed");
+
 }
 
 /*
@@ -854,10 +1006,25 @@ static BotResult monitor_stream(
  * APPLICATION
  * ============================================================
  */
-int app_run(void)
+int app_run(int argc, char *argv[])
 {
     AppConfig config;
     BotResult result;
+	CommandOptions command_options;
+
+	if (!command_parse(argc, argv, &command_options))
+	{
+		command_print_help(argv[0]);
+
+		return 1;
+	}
+
+	if (command_options.show_help)
+	{
+		command_print_help(argv[0]);
+
+		return 0;
+	}
     /*
      * ============================================================
      * DIRECTORIES
@@ -963,6 +1130,70 @@ int app_run(void)
     log_info(
         "Configuration loaded successfully"
     );
+
+	/*
+	 * ============================================================
+	 * РЕЖИМЫ ЗАПУСКА
+	 * ============================================================
+	 */
+	{
+		/*
+		 * Сам по себе --dry-run пока смысла не имеет
+		 */
+		if (command_options.dry_run && !command_options.test_stream)
+		{
+			log_error(
+				"--dry-run requires --test-stream"
+			);
+
+			logger_shutdown();
+
+			return 1;
+		}
+
+		if (command_options.test_stream)
+		{
+			log_info("Test mode requested: --test-stream");
+
+			if (command_options.dry_run)
+			{
+				log_info("Dry run enabled: Network request  are disabled");
+			}
+		}
+
+		run_test_stream(&config, command_options.dry_run);
+
+		logger_shutdown();
+
+		return 0;
+	}
+#if 0
+	/*
+	 * ============================================================
+	 * Тестовый режим
+	 * ============================================================
+	 */
+	if (test_stream_requsted(argc, argv))
+	{
+		log_info("Test mode requested: --test-stream");
+
+		if (config.telegram.bot_token[0] == '\0' ||
+			config.telegram.chat_id[0]	 == '\0')
+		{
+			log_error("Telegram confuguration is incompleted");
+
+			logger_shutdown();
+
+			return 1;
+		}
+
+		run_test_stream(&config);
+
+		logger_shutdown();
+
+		return 0;
+	}
+
     log_info(
         "Broadcaster: %s",
         config.twitch.broadcaster_login
@@ -985,6 +1216,7 @@ int app_run(void)
             "Telegram bot token is not configured yet"
         );
     }
+#endif
     /*
      * ============================================================
      * INTERNET TEST

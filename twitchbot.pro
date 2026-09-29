@@ -11,6 +11,7 @@ INCLUDEPATH += \
 
 SOURCES += \
     src/bot_result.c \
+    src/commands.c \
     src/config.c \
     src/http_client.c \
     src/logger.c \
@@ -28,6 +29,7 @@ SOURCES += \
 HEADERS += \
     include/app.h \
     include/bot_result.h \
+    include/commands.h \
     include/config.h \
     include/http_client.h \
     include/logger.h \
