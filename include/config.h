@@ -9,6 +9,10 @@
  */
 #define CONFIG_STRING_SIZE 256
 
+/*
+ * OAuth-токены могут быть значительно длиннее
+ * обычных строковых параметров.
+ */
 #define CONFIG_TOKEN_SIZE 1024
 
 
@@ -31,8 +35,23 @@ typedef struct
 
 typedef struct
 {
+    /*
+     * Токен Telegram-бота.
+     * Используется Telegram Bot API.
+     */
     char bot_token[CONFIG_STRING_SIZE];
+
+    /*
+     * ID Telegram-чата или канала.
+     * Используется Telegram Bot API для отправки сообщений.
+     */
     char chat_id[CONFIG_STRING_SIZE];
+
+    /*
+     * Публичная ссылка на Telegram-канал.
+     * Используется, например, командой !тг.
+     */
+    char channel_url[CONFIG_STRING_SIZE];
 
 } TelegramConfig;
 
@@ -46,9 +65,9 @@ typedef struct
 
 typedef struct
 {
-    TwitchConfig   twitch;
+    TwitchConfig twitch;
     TelegramConfig telegram;
-    BotConfig      bot;
+    BotConfig bot;
 
 } AppConfig;
 

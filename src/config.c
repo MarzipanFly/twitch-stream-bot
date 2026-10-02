@@ -5,93 +5,120 @@
 #include <string.h>
 #include <ctype.h>
 
+
 typedef enum
 {
     SECTION_NONE = 0,
     SECTION_TWITCH,
     SECTION_TELEGRAM,
     SECTION_BOT
+
 } ConfigSection;
+
 
 /*
  * Удаляет пробелы в начале строки.
  */
-static char *trim_left(char *str)
+static char *trim_left(
+    char *str
+)
 {
-    while (*str != '\0' && isspace((unsigned char)*str))
-        str++;
+    while (
+        *str != '\0' &&
+        isspace(
+            (unsigned char)*str
+        ))
+    {
+        ++str;
+    }
 
     return str;
 }
 
-/*
-* Удаляет пробелы и перенос строки в конце.
-*/
-static void trim_right(char *str)
-{
-   size_t length;
-
-   length = strlen(str);
-
-   while (length > 0 &&
-          isspace((unsigned char)str[length - 1]))
-   {
-       str[length - 1] = '\0';
-       length--;
-   }
-}
 
 /*
-* Определяет секцию INI-файла.
-*/
-static ConfigSection parse_section(const char *line)
-{
-   if (strcmp(line, "[twitch]") == 0)
-   {
-       return SECTION_TWITCH;
-   }
-
-   if (strcmp(line, "[telegram]") == 0)
-   {
-       return SECTION_TELEGRAM;
-   }
-
-   if (strcmp(line, "[bot]") == 0)
-   {
-       return SECTION_BOT;
-   }
-
-   return SECTION_NONE;
-}
-
-/*
-* Записывает строку в буфер ограниченного размера.
-*/
-static void copy_string(
-   char *destination,
-   size_t destination_size,
-   const char *source
+ * Удаляет пробелы и переносы строки
+ * в конце строки.
+ */
+static void trim_right(
+    char *str
 )
 {
-   if (destination_size == 0)
-   {
-       return;
-   }
+    size_t length;
 
-   snprintf(
-       destination,
-       destination_size,
-       "%s",
-       source
-   );
+    length =
+        strlen(
+            str
+        );
+
+    while (
+        length > 0 &&
+        isspace(
+            (unsigned char)str[length - 1]
+        ))
+    {
+        str[length - 1] = '\0';
+        --length;
+    }
 }
 
 
 /*
-* Обрабатывает одну пару:
-*
-* key=value
-*/
+ * Определяет секцию INI-файла.
+ */
+static ConfigSection parse_section(
+    const char *line
+)
+{
+    if (strcmp(line, "[twitch]") == 0)
+    {
+        return SECTION_TWITCH;
+    }
+
+    if (strcmp(line, "[telegram]") == 0)
+    {
+        return SECTION_TELEGRAM;
+    }
+
+    if (strcmp(line, "[bot]") == 0)
+    {
+        return SECTION_BOT;
+    }
+
+    return SECTION_NONE;
+}
+
+
+/*
+ * Копирует строку в буфер
+ * ограниченного размера.
+ */
+static void copy_string(
+    char *destination,
+    size_t destination_size,
+    const char *source
+)
+{
+    if (
+        destination == NULL ||
+        source == NULL ||
+        destination_size == 0)
+    {
+        return;
+    }
+
+    snprintf(
+        destination,
+        destination_size,
+        "%s",
+        source
+    );
+}
+
+
+/*
+ * Обрабатывает одну пару key=value.
+ */
 static void parse_key_value(
     ConfigSection section,
     const char *key,
@@ -189,6 +216,14 @@ static void parse_key_value(
                     value
                 );
             }
+            else if (strcmp(key, "channel_url") == 0)
+            {
+                copy_string(
+                    config->telegram.channel_url,
+                    sizeof(config->telegram.channel_url),
+                    value
+                );
+            }
 
             break;
 
@@ -207,137 +242,117 @@ static void parse_key_value(
 
 
         default:
+
             break;
     }
 }
 
 
-BotResult config_load(const char *filename, AppConfig *config)
+BotResult config_load(
+    const char *filename,
+    AppConfig *config
+)
 {
-   FILE *file;
+    FILE *file;
+    char line[2048];
+    ConfigSection current_section = SECTION_NONE;
 
-   char line[2048];
+    if (
+        filename == NULL ||
+        config == NULL)
+    {
+        return BOT_ERR_CONFIG;
+    }
 
-   ConfigSection current_section = SECTION_NONE;
+    memset(
+        config,
+        0,
+        sizeof(*config)
+    );
 
+    config->bot.command_prefix = '!';
 
-   if (filename == NULL || config == NULL)
-   {
-	   return BOT_ERR_CONFIG;
-   }
+    file = fopen(filename, "r");
 
+    if (file == NULL)
+    {
+        log_error(
+            "Failed to open configuration file: %s",
+            filename
+        );
 
-   /*
-    * Значения по умолчанию.
-    */
-   memset(config, 0, sizeof(*config));
+        return BOT_ERR_FILE;
+    }
 
-   config->bot.command_prefix = '!';
+    while (
+        fgets(
+            line,
+            sizeof(line),
+            file
+        ) != NULL)
+    {
+        char *content;
+        char *separator;
+        char *key;
+        char *value;
 
+        trim_right(line);
+        content = trim_left(line);
 
-   file = fopen(filename, "r");
+        if (*content == '\0')
+        {
+            continue;
+        }
 
-   if (file == NULL)
-   {
-       log_error(
-           "Failed to open configuration file: %s",
-           filename
-       );
+        if (
+            *content == '#' ||
+            *content == ';')
+        {
+            continue;
+        }
 
-	   return BOT_ERR_FILE;
-   }
+        if (*content == '[')
+        {
+            current_section = parse_section(content);
+            continue;
+        }
 
+        separator = strchr(content, '=');
 
-   while (fgets(line, sizeof(line), file) != NULL)
-   {
-       char *content;
-       char *separator;
+        if (separator == NULL)
+        {
+            continue;
+        }
 
-       char *key;
-       char *value;
+        *separator = '\0';
 
+        key = trim_left(content);
+        trim_right(key);
 
-       trim_right(line);
+        value = trim_left(separator + 1);
+        trim_right(value);
 
-       content = trim_left(line);
+        parse_key_value(
+            current_section,
+            key,
+            value,
+            config
+        );
+    }
 
+    fclose(file);
 
-       /*
-        * Пустая строка.
-        */
-       if (*content == '\0')
-       {
-           continue;
-       }
-
-
-       /*
-        * Комментарий.
-        */
-       if (*content == '#' || *content == ';')
-       {
-           continue;
-       }
-
-
-       /*
-        * Секция.
-        */
-       if (*content == '[')
-       {
-           current_section = parse_section(content);
-           continue;
-       }
-
-
-       /*
-        * Ищем символ =
-        */
-       separator = strchr(content, '=');
-
-       if (separator == NULL)
-       {
-           continue;
-       }
-
-
-       /*
-        * Разбиваем строку:
-        *
-        * key=value
-        *
-        * на две отдельных строки.
-        */
-       *separator = '\0';
-
-
-       key = trim_left(content);
-       trim_right(key);
-
-
-       value = trim_left(separator + 1);
-       trim_right(value);
-
-
-       parse_key_value(
-           current_section,
-           key,
-           value,
-           config
-       );
-   }
-
-
-   fclose(file);
-
-   return BOT_OK;
+    return BOT_OK;
 }
 
-BotResult config_validate(const AppConfig *config)
+
+BotResult config_validate(
+    const AppConfig *config
+)
 {
     if (config == NULL)
     {
-		return BOT_ERR_CONFIG;
+        return BOT_ERR_CONFIG;
     }
 
     if (config->twitch.broadcaster_login[0] == '\0')
@@ -346,7 +361,7 @@ BotResult config_validate(const AppConfig *config)
             "Configuration error: twitch.broadcaster_login is empty"
         );
 
-		return BOT_ERR_CONFIG;
+        return BOT_ERR_CONFIG;
     }
 
     if (config->bot.command_prefix == '\0')
@@ -355,8 +370,8 @@ BotResult config_validate(const AppConfig *config)
             "Configuration error: bot.command_prefix is empty"
         );
 
-		return BOT_ERR_CONFIG;
+        return BOT_ERR_CONFIG;
     }
 
-	return BOT_OK;
+    return BOT_OK;
 }

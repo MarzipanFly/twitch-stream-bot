@@ -2,6 +2,7 @@
 #include "logger.h"
 #include "config.h"
 #include "bot_result.h"
+#include "commands.h"
 #include "platform.h"
 #include "telegram_api.h"
 #include "http_client.h"
@@ -11,8 +12,6 @@
 #include "twitch_user.h"
 #include "twitch_stream.h"
 #include "token_store.h"
-#include "commands.h"
-
 #include <stdio.h>
 #include <string.h>
 #include <windows.h>
@@ -22,7 +21,7 @@
  * при запуске и затем примерно раз в час.
  */
 #define TOKEN_VALIDATION_INTERVAL_MS \
-    (60ULL * 60ULL * 1000ULL)
+    (60UL * 60UL * 1000UL)
 /*
  * Отправляет уведомление о старте стрима в Telegram.
  */
@@ -78,7 +77,6 @@ static int stop_requested(void)
             0
         ) != 0;
 }
-
 /*
  * ============================================================
  * INTERRUPTIBLE SLEEP
@@ -532,70 +530,63 @@ static void log_stream_information(
  * ============================================================
  * ФОРМИРОВАНИЕ TELEGRAM-УВЕДОМЛЕНИЯ
  * ============================================================
- *
- * Формирует текст уведомление о начале стрима
- *
- * Вовзращает:
- * 1- сообщение сформировано
- * 0 - произошла ошибка
  */
 static int build_stream_started_message(
-		const AppConfig *config,
-		const TwitchStream *stream,
-		char *buffer,
-		size_t buffer_size
+    const AppConfig *config,
+    const TwitchStream *stream,
+    char *buffer,
+    size_t buffer_size
 )
 {
-	const char *title;
-	const char *game;
+    const char *title;
+    const char *game;
+    int written;
 
-	int written;
+    if (
+        config == NULL ||
+        stream == NULL ||
+        buffer == NULL ||
+        buffer_size == 0)
+    {
+        return 0;
+    }
 
-	if( config==NULL ||
-		stream==NULL ||
-		buffer==NULL ||
-		buffer_size==0)
-	{
-		return 0;
-	}
+    title =
+        stream->title[0] != '\0'
+            ? stream->title
+            : "Без названия";
 
-	title =
-		stream->title[0] != '\0'
-			? stream->title
-			: "Без названия";
+    game =
+        stream->game_name[0] != '\0'
+            ? stream->game_name
+            : "Категория не указана";
 
-	game =
-		stream->game_name[0] != '\0'
-			? stream->game_name
-			: "Категория не указана";
+    written =
+        snprintf(
+            buffer,
+            buffer_size,
+            "🔴 Стрим начался!\n\n"
+            "🎮 %s\n"
+            "📝 %s\n\n"
+            "🍊 Залетай на стрим:\n"
+            "https://twitch.tv/%s",
+            game,
+            title,
+            config->twitch.broadcaster_login
+        );
 
-	written =
-		snprintf(
-			buffer,
-			buffer_size,
+    if (
+        written < 0 ||
+        (size_t)written >= buffer_size)
+    {
+        log_error(
+            "Failed to build stream notification: message is too long"
+        );
 
-			"🔴 Стрим начался!\n\n"
-			"🎮 %s\n"
-			"📝 %s\n\n"
-			"🍊 Залетай на стрим:\n"
-			"https://twitch.tv/%s",
+        return 0;
+    }
 
-			game,
-			title,
-			config->twitch.broadcaster_login
-		);
-
-	if (written < 0 ||
-		(size_t)written >= buffer_size)
-	{
-		log_error(
-			"Failed to build stream notification: message is too long"
-		);
-
-		return 0;
-	}
-
-	return 1;
+    return 1;
 }
 
 
@@ -616,148 +607,299 @@ static void notify_stream_started(
 {
     char message[2048];
     BotResult result;
-    const char *title;
-    const char *game;
-    if (config == NULL ||
+
+    if (
+        config == NULL ||
         stream == NULL)
     {
         return;
     }
-    /*
-     * Telegram пока не настроен.
-     */
-    if (config->telegram.bot_token[0] == '\0' ||
+
+    if (
+        config->telegram.bot_token[0] == '\0' ||
         config->telegram.chat_id[0] == '\0')
     {
         log_warning(
             "Telegram notification skipped: configuration is incomplete"
         );
+
         return;
     }
-	if (
-		!build_stream_started_message(
-				config,
-				stream,
-				message,
-				sizeof(message))
-		)
-	{
-		return;
-	}
+
+    if (
+        !build_stream_started_message(
+            config,
+            stream,
+            message,
+            sizeof(message)
+        ))
+    {
+        return;
+    }
+
     log_info(
         "Sending stream notification to Telegram..."
     );
+
     result =
         telegram_send_message(
             &config->telegram,
             message
         );
+
     if (result != BOT_OK)
     {
-        /*
-         * Важно:
-         *
-         * Telegram упал —
-         * Twitch monitor продолжает работать.
-         */
         log_warning(
             "Failed to send Telegram stream notification: %s",
             bot_result_to_string(result)
         );
+
         return;
     }
+
     log_info(
         "Telegram stream notification sent"
     );
 }
 
+
 /*
  * ============================================================
- * TEST STREAM
+ * ТЕСТОВЫЙ СТРИМ
  * ============================================================
  *
- * Создаёт искуссвтеный TwitchStream
- * и отправляет обычное уведомление в Telegram.
- *
- * Никаких запросов к твичу здесь нет.
+ * Создаёт искусственный TwitchStream.
+ * В режиме dry-run сеть вообще не используется.
  */
 static void run_test_stream(
-		const AppConfig *config,
-		int dry_run
+    const AppConfig *config,
+    int dry_run
 )
 {
-	TwitchStream stream = {0};
+    TwitchStream stream =
+        {0};
 
-	char message[2048];
+    char message[2048];
 
-	stream.is_live=1;
+    stream.is_live = 1;
 
-	snprintf(
-			stream.title,
-			sizeof (stream.title),
-			"%s",
-			"Тестовый запуск TwitchBot"
-	);
+    snprintf(
+        stream.title,
+        sizeof(stream.title),
+        "%s",
+        "Тестовый запуск TwitchBot"
+    );
 
-	snprintf(
-			stream.game_name,
-			sizeof (stream.game_name),
-			"%s",
-			"Just Chatting"
-	);
+    snprintf(
+        stream.game_name,
+        sizeof(stream.game_name),
+        "%s",
+        "Just Chatting"
+    );
 
-	snprintf(
-			stream.language,
-			sizeof (stream.language),
-			"%s",
-			"ru"
-	);
+    snprintf(
+        stream.language,
+        sizeof(stream.language),
+        "%s",
+        "ru"
+    );
 
-	stream.viewer_count = 42;
+    stream.viewer_count = 42;
 
-	log_info("Running simulated stream start");
+    log_info(
+        "Running simulated stream start"
+    );
 
-	log_stream_information(&stream);
+    log_stream_information(
+        &stream
+    );
 
-	/*
-	 * Dry Run:
-	 *
-	 * создаём настоящее сообщениеб
-	 * но не отправялем его по сети
-	 */
-	if (dry_run)
-	{
-		if (
-			build_stream_started_message(
-					config,
-					&stream,
-					message,
-					sizeof(message)
-			))
-		{
-			log_info(
-				"Dry run: Telegram mesage would be:"
-			);
+    if (dry_run)
+    {
+        if (
+            build_stream_started_message(
+                config,
+                &stream,
+                message,
+                sizeof(message)
+            ))
+        {
+            log_info(
+                "Dry run: Telegram message would be:"
+            );
 
-			log_info(
-				"\n%s",
-				message
-			);
-		}
-		else
-		{
-			notify_stream_started(
-				config,
-				&stream
-			);
-		}
-	}
+            log_info(
+                "\n%s",
+                message
+            );
+        }
+    }
+    else
+    {
+        notify_stream_started(
+            config,
+            &stream
+        );
+    }
 
-	notify_stream_started(config, &stream);
-
-	log_info("Simulated stream strat completed");
-
+    log_info(
+        "Simulated stream start completed"
+    );
 }
+
+
+/*
+ * Удаляет перевод строки, который fgets() оставляет
+ * в конце введённой пользователем строки.
+ */
+static void trim_line_end(
+    char *text
+)
+{
+    size_t length;
+
+    if (text == NULL)
+    {
+        return;
+    }
+
+    length =
+        strlen(text);
+
+    while (
+        length > 0 &&
+        (
+            text[length - 1] == '\n' ||
+            text[length - 1] == '\r'
+        ))
+    {
+        text[length - 1] = '\0';
+        --length;
+    }
+}
+
+
+/*
+ * ============================================================
+ * ЛОКАЛЬНЫЙ ТЕСТ КОМАНД ЧАТА
+ * ============================================================
+ *
+ * Позволяет тестировать !тг, !кости, !монетка и другие
+ * команды без Twitch и без подключения к интернету.
+ */
+static void run_chat_test_console(
+    const AppConfig *config
+)
+{
+    char input[1024];
+    char response[2048];
+    ChatCommand command;
+
+    /*
+     * SetConsoleCP() и SetConsoleOutputCP() — функции WinAPI.
+     * Они переключают кодировку консольного ввода и вывода
+     * на UTF-8, чтобы русские команды корректнее работали
+     * в обычной Windows-консоли.
+     */
+    SetConsoleCP(
+        CP_UTF8
+    );
+
+    SetConsoleOutputCP(
+        CP_UTF8
+    );
+
+    printf(
+        "\nLocal Twitch chat command test\n"
+        "Prefix: %c\n"
+        "Type exit to quit.\n\n",
+        config->bot.command_prefix
+    );
+
+    for (;;)
+    {
+        printf(
+            "> "
+        );
+
+        fflush(
+            stdout
+        );
+
+        if (
+            fgets(
+                input,
+                sizeof(input),
+                stdin
+            ) == NULL)
+        {
+            break;
+        }
+
+        trim_line_end(
+            input
+        );
+
+        if (
+            strcmp(
+                input,
+                "exit"
+            ) == 0 ||
+            strcmp(
+                input,
+                "quit"
+            ) == 0)
+        {
+            break;
+        }
+
+        if (input[0] == '\0')
+        {
+            continue;
+        }
+
+        if (
+            !chat_command_parse(
+                input,
+                config->bot.command_prefix,
+                &command
+            ))
+        {
+            printf(
+                "BOT: это обычное сообщение, не команда.\n"
+            );
+
+            continue;
+        }
+
+        if (
+            chat_command_build_response(
+                &command,
+                config->telegram.channel_url,
+                response,
+                sizeof(response)
+            ))
+        {
+            printf(
+                "BOT: %s\n",
+                response
+            );
+        }
+        else if (
+            command.type ==
+            CHAT_COMMAND_UNKNOWN)
+        {
+            printf(
+                "BOT: неизвестная команда.\n"
+            );
+        }
+    }
+
+    printf(
+        "Chat command test finished.\n"
+    );
+}
+
 
 /*
  * ============================================================
@@ -1006,25 +1148,45 @@ static BotResult monitor_stream(
  * APPLICATION
  * ============================================================
  */
-int app_run(int argc, char *argv[])
+int app_run(
+    int argc,
+    char *argv[]
+)
 {
     AppConfig config;
+    CommandOptions command_options;
     BotResult result;
-	CommandOptions command_options;
 
-	if (!command_parse(argc, argv, &command_options))
-	{
-		command_print_help(argv[0]);
+    /*
+     * Сначала разбираем параметры запуска.
+     * Для --help никакая другая инициализация не нужна.
+     */
+    if (
+        !command_parse(
+            argc,
+            argv,
+            &command_options
+        ))
+    {
+        command_print_help(
+            argc > 0
+                ? argv[0]
+                : NULL
+        );
 
-		return 1;
-	}
+        return 1;
+    }
 
-	if (command_options.show_help)
-	{
-		command_print_help(argv[0]);
+    if (command_options.show_help)
+    {
+        command_print_help(
+            argc > 0
+                ? argv[0]
+                : NULL
+        );
 
-		return 0;
-	}
+        return 0;
+    }
     /*
      * ============================================================
      * DIRECTORIES
@@ -1130,70 +1292,6 @@ int app_run(int argc, char *argv[])
     log_info(
         "Configuration loaded successfully"
     );
-
-	/*
-	 * ============================================================
-	 * РЕЖИМЫ ЗАПУСКА
-	 * ============================================================
-	 */
-	{
-		/*
-		 * Сам по себе --dry-run пока смысла не имеет
-		 */
-		if (command_options.dry_run && !command_options.test_stream)
-		{
-			log_error(
-				"--dry-run requires --test-stream"
-			);
-
-			logger_shutdown();
-
-			return 1;
-		}
-
-		if (command_options.test_stream)
-		{
-			log_info("Test mode requested: --test-stream");
-
-			if (command_options.dry_run)
-			{
-				log_info("Dry run enabled: Network request  are disabled");
-			}
-		}
-
-		run_test_stream(&config, command_options.dry_run);
-
-		logger_shutdown();
-
-		return 0;
-	}
-#if 0
-	/*
-	 * ============================================================
-	 * Тестовый режим
-	 * ============================================================
-	 */
-	if (test_stream_requsted(argc, argv))
-	{
-		log_info("Test mode requested: --test-stream");
-
-		if (config.telegram.bot_token[0] == '\0' ||
-			config.telegram.chat_id[0]	 == '\0')
-		{
-			log_error("Telegram confuguration is incompleted");
-
-			logger_shutdown();
-
-			return 1;
-		}
-
-		run_test_stream(&config);
-
-		logger_shutdown();
-
-		return 0;
-	}
-
     log_info(
         "Broadcaster: %s",
         config.twitch.broadcaster_login
@@ -1202,6 +1300,50 @@ int app_run(int argc, char *argv[])
         "Command prefix: %c",
         config.bot.command_prefix
     );
+    /*
+     * ============================================================
+     * ЛОКАЛЬНЫЕ ТЕСТОВЫЕ РЕЖИМЫ
+     * ============================================================
+     *
+     * Эти режимы обрабатываются ДО любых сетевых запросов.
+     */
+    if (command_options.test_chat)
+    {
+        log_info(
+            "Test mode requested: --test-chat"
+        );
+
+        run_chat_test_console(
+            &config
+        );
+
+        logger_shutdown();
+
+        return 0;
+    }
+
+    if (command_options.test_stream)
+    {
+        log_info(
+            "Test mode requested: --test-stream"
+        );
+
+        if (command_options.dry_run)
+        {
+            log_info(
+                "Dry run enabled: network requests are disabled"
+            );
+        }
+
+        run_test_stream(
+            &config,
+            command_options.dry_run
+        );
+
+        logger_shutdown();
+
+        return 0;
+    }
     if (config.twitch.client_id[0] == '\0')
     {
         log_error(
@@ -1216,7 +1358,6 @@ int app_run(int argc, char *argv[])
             "Telegram bot token is not configured yet"
         );
     }
-#endif
     /*
      * ============================================================
      * INTERNET TEST
