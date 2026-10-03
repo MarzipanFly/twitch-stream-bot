@@ -9,12 +9,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 #define TOKEN_STORE_FILE "data/twitch_tokens.dat"
-
 #define TOKEN_STORE_MAGIC   0x4B544254UL
 #define TOKEN_STORE_VERSION 1UL
-
 
 typedef struct
 {
@@ -24,7 +21,6 @@ typedef struct
     TwitchAuthToken token;
 
 } TokenStorePayload;
-
 
 BotResult token_store_save(
     const TwitchAuthToken *token
@@ -39,12 +35,10 @@ BotResult token_store_save(
 
     size_t written;
 
-
     if (token == NULL)
     {
         return BOT_ERR_STORAGE;
     }
-
 
     if (token->access_token[0] == '\0' ||
         token->refresh_token[0] == '\0')
@@ -56,21 +50,17 @@ BotResult token_store_save(
         return BOT_ERR_STORAGE;
     }
 
-
     memset(
         &payload,
         0,
         sizeof(payload)
     );
 
-
     payload.magic =
         TOKEN_STORE_MAGIC;
 
-
     payload.version =
         TOKEN_STORE_VERSION;
-
 
     memcpy(
         &payload.token,
@@ -78,14 +68,11 @@ BotResult token_store_save(
         sizeof(payload.token)
     );
 
-
     input_blob.pbData =
         (BYTE *)&payload;
 
-
     input_blob.cbData =
         (DWORD)sizeof(payload);
-
 
     memset(
         &encrypted_blob,
@@ -93,12 +80,9 @@ BotResult token_store_save(
         sizeof(encrypted_blob)
     );
 
-
     /*
-     * Windows DPAPI.
-     *
-     * Windows шифрует данные так, что расшифровать
-     * их сможет текущий пользователь Windows.
+     * Windows DPAPI binds the encrypted data to
+     * the current Windows user profile.
      */
     if (!CryptProtectData(
             &input_blob,
@@ -114,22 +98,19 @@ BotResult token_store_save(
             GetLastError()
         );
 
-
         SecureZeroMemory(
             &payload,
             sizeof(payload)
         );
 
-
         return BOT_ERR_STORAGE;
     }
 
-
-    file = fopen(
-        TOKEN_STORE_FILE,
-        "wb"
-    );
-
+    file =
+        fopen(
+            TOKEN_STORE_FILE,
+            "wb"
+        );
 
     if (file == NULL)
     {
@@ -137,40 +118,32 @@ BotResult token_store_save(
             "Failed to open token storage file for writing"
         );
 
-
         SecureZeroMemory(
             &payload,
             sizeof(payload)
         );
-
 
         SecureZeroMemory(
             encrypted_blob.pbData,
             encrypted_blob.cbData
         );
 
-
         LocalFree(
             encrypted_blob.pbData
         );
 
-
         return BOT_ERR_FILE;
     }
 
+    written =
+        fwrite(
+            encrypted_blob.pbData,
+            1,
+            encrypted_blob.cbData,
+            file
+        );
 
-    written = fwrite(
-        encrypted_blob.pbData,
-        1,
-        encrypted_blob.cbData,
-        file
-    );
-
-
-    fclose(
-        file
-    );
-
+    fclose(file);
 
     if (written !=
         encrypted_blob.cbData)
@@ -179,53 +152,43 @@ BotResult token_store_save(
             "Failed to write complete token storage file"
         );
 
-
         SecureZeroMemory(
             &payload,
             sizeof(payload)
         );
-
 
         SecureZeroMemory(
             encrypted_blob.pbData,
             encrypted_blob.cbData
         );
 
-
         LocalFree(
             encrypted_blob.pbData
         );
 
-
         return BOT_ERR_FILE;
     }
-
 
     SecureZeroMemory(
         &payload,
         sizeof(payload)
     );
 
-
     SecureZeroMemory(
         encrypted_blob.pbData,
         encrypted_blob.cbData
     );
 
-
     LocalFree(
         encrypted_blob.pbData
     );
-
 
     log_info(
         "Twitch OAuth tokens saved securely"
     );
 
-
     return BOT_OK;
 }
-
 
 BotResult token_store_load(
     TwitchAuthToken *token
@@ -244,12 +207,10 @@ BotResult token_store_load(
 
     TokenStorePayload payload;
 
-
     if (token == NULL)
     {
         return BOT_ERR_STORAGE;
     }
-
 
     memset(
         token,
@@ -257,23 +218,19 @@ BotResult token_store_load(
         sizeof(*token)
     );
 
-
-    file = fopen(
-        TOKEN_STORE_FILE,
-        "rb"
-    );
-
+    file =
+        fopen(
+            TOKEN_STORE_FILE,
+            "rb"
+        );
 
     /*
-     * Файла пока нет.
-     *
-     * Это нормально при первом запуске.
+     * Missing file is normal on the first run.
      */
     if (file == NULL)
     {
         return BOT_ERR_FILE;
     }
-
 
     if (fseek(
             file,
@@ -281,78 +238,65 @@ BotResult token_store_load(
             SEEK_END) != 0)
     {
         fclose(file);
-
         return BOT_ERR_FILE;
     }
 
-
-    file_size = ftell(
-        file
-    );
-
+    file_size =
+        ftell(file);
 
     if (file_size <= 0)
     {
         fclose(file);
-
         return BOT_ERR_STORAGE;
     }
 
+    rewind(file);
 
-    rewind(
-        file
-    );
-
-
-    buffer = (BYTE *)malloc(
-        (size_t)file_size
-    );
-
+    buffer =
+        (BYTE *)malloc(
+            (size_t)file_size
+        );
 
     if (buffer == NULL)
     {
         fclose(file);
-
         return BOT_ERR_STORAGE;
     }
 
+    read_size =
+        fread(
+            buffer,
+            1,
+            (size_t)file_size,
+            file
+        );
 
-    read_size = fread(
-        buffer,
-        1,
-        (size_t)file_size,
-        file
-    );
-
-
-    fclose(
-        file
-    );
-
+    fclose(file);
 
     if (read_size !=
         (size_t)file_size)
     {
+        SecureZeroMemory(
+            buffer,
+            (SIZE_T)file_size
+        );
+
         free(buffer);
 
         return BOT_ERR_FILE;
     }
 
-
     encrypted_blob.pbData =
         buffer;
 
-
     encrypted_blob.cbData =
         (DWORD)file_size;
-
 
     memset(
         &decrypted_blob,
         0,
         sizeof(decrypted_blob)
     );
-
 
     if (!CryptUnprotectData(
             &encrypted_blob,
@@ -368,32 +312,22 @@ BotResult token_store_load(
             GetLastError()
         );
 
-
         SecureZeroMemory(
             buffer,
             (SIZE_T)file_size
         );
 
-
-        free(
-            buffer
-        );
-
+        free(buffer);
 
         return BOT_ERR_STORAGE;
     }
-
 
     SecureZeroMemory(
         buffer,
         (SIZE_T)file_size
     );
 
-
-    free(
-        buffer
-    );
-
+    free(buffer);
 
     if (decrypted_blob.cbData !=
         sizeof(TokenStorePayload))
@@ -402,21 +336,17 @@ BotResult token_store_load(
             "Invalid Twitch token storage size"
         );
 
-
         SecureZeroMemory(
             decrypted_blob.pbData,
             decrypted_blob.cbData
         );
 
-
         LocalFree(
             decrypted_blob.pbData
         );
 
-
         return BOT_ERR_STORAGE;
     }
-
 
     memcpy(
         &payload,
@@ -424,17 +354,14 @@ BotResult token_store_load(
         sizeof(payload)
     );
 
-
     SecureZeroMemory(
         decrypted_blob.pbData,
         decrypted_blob.cbData
     );
 
-
     LocalFree(
         decrypted_blob.pbData
     );
-
 
     if (payload.magic !=
             TOKEN_STORE_MAGIC ||
@@ -445,16 +372,13 @@ BotResult token_store_load(
             "Invalid Twitch token storage format"
         );
 
-
         SecureZeroMemory(
             &payload,
             sizeof(payload)
         );
 
-
         return BOT_ERR_STORAGE;
     }
-
 
     if (payload.token.access_token[0] == '\0' ||
         payload.token.refresh_token[0] == '\0')
@@ -463,16 +387,13 @@ BotResult token_store_load(
             "Stored Twitch OAuth tokens are empty"
         );
 
-
         SecureZeroMemory(
             &payload,
             sizeof(payload)
         );
 
-
         return BOT_ERR_STORAGE;
     }
-
 
     memcpy(
         token,
@@ -480,34 +401,28 @@ BotResult token_store_load(
         sizeof(*token)
     );
 
-
     SecureZeroMemory(
         &payload,
         sizeof(payload)
     );
 
-
     return BOT_OK;
 }
-
 
 BotResult token_store_delete(void)
 {
     DWORD attributes;
-
 
     attributes =
         GetFileAttributesA(
             TOKEN_STORE_FILE
         );
 
-
     if (attributes ==
         INVALID_FILE_ATTRIBUTES)
     {
         return BOT_OK;
     }
-
 
     if (!DeleteFileA(
             TOKEN_STORE_FILE))
@@ -517,10 +432,8 @@ BotResult token_store_delete(void)
             GetLastError()
         );
 
-
         return BOT_ERR_FILE;
     }
-
 
     return BOT_OK;
 }

@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 
+
 /*
  * Параметры запуска программы.
  */
@@ -11,6 +12,9 @@ typedef struct
     int test_stream;
     int dry_run;
     int test_chat;
+    int test_twitch_chat;
+    int test_eventsub_chat;
+    int test_twitch_command;
     int show_help;
 
 } CommandOptions;
@@ -107,5 +111,6 @@ int chat_command_build_response(
     char *buffer,
     size_t buffer_size
 );
+
 
 #endif

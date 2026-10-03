@@ -1,267 +1,738 @@
-# Функции и структуры
+# Функции и структуры Twitch Stream Bot
 
-Этот документ — карта текущего исходного кода: что хранит каждая основная структура и какую роль выполняют функции.
+Документ описывает **текущий код**, а не будущую архитектуру. Главная цель — быстро понять, где находится нужная логика, что функция принимает, что возвращает и кто её вызывает.
 
-## Базовые типы
+---
 
-### `BotResult`
+# 1. `include/bot_result.h` / `src/bot_result.c`
 
-Единый код результата операций проекта.
+## `BotResult`
 
-Основные значения:
+Единый enum кодов результата, которым пользуются почти все модули.
 
-- `BOT_OK` — успех;
-- `BOT_AUTH_PENDING` — Device Code авторизация ещё не подтверждена;
-- `BOT_ERR_CONFIG` — ошибка конфигурации;
-- `BOT_ERR_FILE` — ошибка файла;
-- `BOT_ERR_NETWORK` — ошибка сети/WinHTTP;
-- `BOT_ERR_AUTH` — проблема OAuth;
-- `BOT_ERR_JSON` — некорректный JSON;
-- `BOT_ERR_TWITCH` — ошибка Twitch API;
-- `BOT_ERR_TELEGRAM` — зарезервировано под Telegram;
-- `BOT_ERR_STORAGE` — ошибка локального хранилища.
+| Значение | Роль |
+|---|---|
+| `BOT_OK` | Успешное выполнение |
+| `BOT_AUTH_PENDING` | Device Code авторизация ещё ждёт пользователя |
+| `BOT_ERR_UNKNOWN` | Ошибка, не попавшая в более точную категорию |
+| `BOT_ERR_CONFIG` | Неверная конфигурация |
+| `BOT_ERR_FILE` | Ошибка файла/директории |
+| `BOT_ERR_NETWORK` | WinHTTP или сетевая ошибка |
+| `BOT_ERR_AUTH` | Ошибка OAuth / невалидный токен |
+| `BOT_ERR_JSON` | Не удалось разобрать ожидаемый JSON |
+| `BOT_ERR_TWITCH` | Ошибка Twitch API |
+| `BOT_ERR_TELEGRAM` | Зарезервировано для Telegram |
+| `BOT_ERR_STORAGE` | Ошибка локального хранилища |
 
-`bot_result_to_string()` превращает код в текст для логов.
-
-## Конфигурация
-
-### `TwitchConfig`
-
-Хранит Twitch-настройки приложения:
-
-- `client_id`, `client_secret`;
-- текущие `access_token`, `refresh_token` в памяти процесса;
-- `broadcaster_login`, `broadcaster_id`;
-- будущие `bot_login`, `bot_user_id`.
-
-### `TelegramConfig`
-
-Будущая конфигурация Telegram:
-
-- `bot_token`;
-- `chat_id`.
-
-### `BotConfig`
-
-Общие параметры бота. Сейчас содержит `command_prefix`.
-
-### `AppConfig`
-
-Корневая структура конфигурации. Объединяет `TwitchConfig`, `TelegramConfig` и `BotConfig`.
-
-### `config_load(filename, config)`
-
-Читает INI-файл и заполняет `AppConfig`.
-
-### `config_validate(config)`
-
-Проверяет обязательные параметры перед дальнейшим запуском.
-
-## Логирование
-
-### `LogLevel`
-
-Уровни `DEBUG`, `INFO`, `WARNING`, `ERROR`, `FATAL`.
-
-### `logger_init(filename)`
-
-Открывает файл журнала и готовит logger.
-
-### `logger_shutdown()`
-
-Закрывает файл журнала.
-
-### `logger_set_level(level)`
-
-Меняет минимальный выводимый уровень.
-
-### `log_debug/info/warning/error/fatal(...)`
-
-Variadic-функции журналирования с форматированием в стиле `printf`.
-
-## HTTP
-
-### `HttpResponse`
+## `bot_result_to_string()`
 
 ```c
-typedef struct {
+const char *bot_result_to_string(BotResult result);
+```
+
+Преобразует enum в строку для логов.
+
+---
+
+# 2. `include/config.h` / `src/config.c`
+
+## `TwitchConfig`
+
+Хранит параметры Twitch.
+
+| Поле | Назначение |
+|---|---|
+| `client_id` | Client ID Twitch Application |
+| `client_secret` | Сейчас не используется Device Code Flow |
+| `access_token` | Текущий access token в памяти процесса |
+| `refresh_token` | Текущий refresh token в памяти процесса |
+| `broadcaster_login` | Логин отслеживаемого канала |
+| `broadcaster_id` | Числовой Twitch user ID, полученный через Helix |
+| `bot_login` | Зарезервировано под отдельный bot account |
+| `bot_user_id` | Зарезервировано под ID bot account |
+
+Токены в `TwitchConfig` — **рабочая копия в памяти**. Долговременное хранение выполняет `token_store.c`.
+
+## `TelegramConfig`
+
+| Поле | Назначение |
+|---|---|
+| `bot_token` | Telegram Bot API token; пока не используется |
+| `chat_id` | Канал/чат назначения; пока не используется |
+
+## `BotConfig`
+
+| Поле | Назначение |
+|---|---|
+| `command_prefix` | Префикс будущих Twitch-команд, сейчас `!` |
+
+## `AppConfig`
+
+Объединяет:
+
+```c
+TwitchConfig twitch;
+TelegramConfig telegram;
+BotConfig bot;
+```
+
+Это основная конфигурация, живущая в `app_run()`.
+
+## `trim_left()` — static
+
+Убирает пробельные символы слева и возвращает указатель на первый полезный символ. Память не выделяет.
+
+## `trim_right()` — static
+
+Убирает пробелы и переводы строки в конце C-строки, записывая `'\0'`.
+
+## `copy_string()` — static
+
+Безопасно копирует строку через `snprintf()` с учётом размера массива назначения.
+
+## `parse_section()` — static
+
+Определяет текущую INI-секцию:
+
+```text
+[twitch]
+[telegram]
+[bot]
+```
+
+## `parse_key_value()` — static
+
+Разделяет строку по первому `=` и записывает значение в соответствующее поле `AppConfig`.
+
+## `config_load()`
+
+```c
+BotResult config_load(
+    const char *filename,
+    AppConfig *config
+);
+```
+
+Читает INI-файл построчно. Перед чтением полностью обнуляет `AppConfig` и задаёт `command_prefix='!'` по умолчанию.
+
+## `config_validate()`
+
+Проверяет базовые обязательные поля. Сейчас обязательно наличие:
+
+- `broadcaster_login`;
+- ненулевого `command_prefix`.
+
+`client_id` дополнительно проверяется в `app_run()`.
+
+---
+
+# 3. `include/logger.h` / `src/logger.c`
+
+## `LogLevel`
+
+```text
+DEBUG
+INFO
+WARNING
+ERROR
+FATAL
+```
+
+## `logger_init()`
+
+Открывает файл лога в режиме append.
+
+```c
+logger_init("logs/bot.log");
+```
+
+## `logger_shutdown()`
+
+Закрывает файловый дескриптор логгера.
+
+## `logger_set_level()`
+
+Задаёт минимальный уровень сообщений.
+
+## `log_debug()`, `log_info()`, `log_warning()`, `log_error()`, `log_fatal()`
+
+Variadic-функции в стиле `printf`.
+
+Пример:
+
+```c
+log_info("Broadcaster ID: %s", user.id);
+```
+
+## `level_to_string()` — static
+
+Преобразует `LogLevel` в подпись для строки журнала.
+
+## `log_message()` — static
+
+Центральная реализация логирования:
+
+1. строит timestamp;
+2. печатает в консоль;
+3. печатает в `bot.log`;
+4. вызывает `fflush`, чтобы лог не терялся при падении программы.
+
+---
+
+# 4. `include/platform.h` / `src/platform_win.c`
+
+## `platform_create_directory()`
+
+```c
+BotResult platform_create_directory(const char *path);
+```
+
+Windows-обёртка над:
+
+```text
+GetFileAttributesA
+CreateDirectoryA
+GetLastError
+```
+
+Если каталог уже существует — это считается успехом.
+
+Сейчас создаёт:
+
+```text
+logs/
+data/
+```
+
+---
+
+# 5. `include/http_client.h` / `src/http_client.c`
+
+## `HttpResponse`
+
+```c
+typedef struct
+{
     unsigned long status_code;
     char *body;
     size_t body_size;
 } HttpResponse;
 ```
 
-`status_code` — HTTP-код, `body` — динамически выделенное тело ответа, `body_size` — его размер.
+### `status_code`
 
-### `http_get(host, path, headers, response)`
+HTTP status:
 
-Выполняет HTTPS GET через WinHTTP.
+```text
+200
+400
+401
+403
+...
+```
 
-### `http_post(host, path, headers, body, response)`
+### `body`
 
-Выполняет HTTPS POST.
+Динамически выделенный буфер ответа.
 
-### `http_response_free(response)`
+### `body_size`
 
-Освобождает `response->body` и сбрасывает поля структуры. После любого завершённого HTTP-вызова это основная функция cleanup.
+Размер payload в байтах без завершающего `'\0'`.
 
-## Twitch User
+## `http_get()`
 
-### `TwitchUser`
+```c
+BotResult http_get(
+    const wchar_t *host,
+    const wchar_t *path,
+    const wchar_t *additional_headers,
+    HttpResponse *response
+);
+```
 
-Модель пользователя Twitch: ID, login, display name, broadcaster type, description и URL изображения профиля.
+Делает HTTPS GET через WinHTTP.
 
-### `twitch_get_user(config, login, response)`
+Последовательность:
 
-Формирует запрос Helix `/users?login=...`, добавляет `Authorization: Bearer` и `Client-Id`, затем вызывает HTTP-клиент.
+```text
+WinHttpOpen
+WinHttpConnect
+WinHttpOpenRequest
+WinHttpAddRequestHeaders
+WinHttpSendRequest
+WinHttpReceiveResponse
+WinHttpQueryHeaders
+WinHttpReadData
+```
 
-### `twitch_parse_user_response(json, user)`
+## `http_post()`
 
-Разбирает JSON Helix и заполняет `TwitchUser`.
+Аналогично `http_get()`, но отправляет POST body.
 
-## OAuth
+Используется OAuth-модулем.
 
-### `TwitchDeviceCode`
+## `http_response_free()`
 
-Данные незавершённой Device Code авторизации:
+**Обязательная функция после использования ответа.**
 
-- `device_code` — служебный код для polling;
-- `user_code` — код, который вводит пользователь;
-- `verification_uri` — адрес Twitch;
-- `expires_in` — срок жизни;
-- `interval` — интервал polling.
+Освобождает `response->body`, затем обнуляет структуру ответа.
 
-### `TwitchAuthToken`
+## `read_response_body()` — static
 
-Пара OAuth-токенов и `expires_in`.
+Читает тело ответа кусками. По мере поступления данных расширяет `body` через `realloc()`.
 
-### `TwitchTokenValidation`
+## `query_status_and_body()` — static
 
-Результат `/oauth2/validate`: Client ID, login, user ID и остаток срока действия.
+Получает HTTP status code и затем вызывает `read_response_body()`.
 
-### `twitch_auth_request_device_code(config, device)`
+## `log_winhttp_error()` — static
 
-Запрашивает Device Code у Twitch.
+Берёт `GetLastError()` и пишет Windows error code в лог.
 
-### `twitch_auth_poll_token(config, device, token)`
+---
 
-Проверяет, подтвердил ли пользователь авторизацию. Пока подтверждения нет, возвращает `BOT_AUTH_PENDING`.
+# 6. `include/twitch_auth.h` / `src/twitch_auth.c`
 
-### `twitch_auth_validate_token(access_token, validation)`
+## `TwitchDeviceCode`
 
-Проверяет access token через Twitch validation endpoint.
+Состояние Device Code Flow.
 
-### `twitch_refresh_access_token(config, refresh_token, new_token)`
+| Поле | Роль |
+|---|---|
+| `device_code` | Машинный код, используемый при polling |
+| `user_code` | Код, который видит и вводит пользователь |
+| `verification_uri` | Адрес Twitch для подтверждения |
+| `expires_in` | Время жизни кода |
+| `interval` | Минимальный интервал polling |
 
-Обменивает refresh token на новую пару OAuth-токенов.
+## `TwitchAuthToken`
 
-## Защищённое хранение
+```c
+char access_token[1024];
+char refresh_token[1024];
+int expires_in;
+```
 
-### `token_store_save(token)`
+Хранит пару OAuth-токенов, полученную от Twitch.
 
-Сериализует OAuth-данные, шифрует через `CryptProtectData` и записывает в `data/twitch_tokens.dat`.
+## `TwitchTokenValidation`
 
-### `token_store_load(token)`
+Результат `/oauth2/validate`.
 
-Читает файл, расшифровывает через `CryptUnprotectData`, проверяет magic/version и возвращает сохранённые токены.
+| Поле | Роль |
+|---|---|
+| `client_id` | Какому Twitch Application принадлежит токен |
+| `login` | Авторизованный Twitch login |
+| `user_id` | Twitch user ID |
+| `expires_in` | Сколько ещё живёт access token |
 
-### `token_store_delete()`
+## `twitch_auth_request_device_code()`
 
-Удаляет локальный token store.
+POST:
 
-## Twitch Stream
+```text
+id.twitch.tv/oauth2/device
+```
 
-### `TwitchStream`
+Получает `device_code`, `user_code`, URI, lifetime и polling interval.
 
-Модель текущей трансляции:
+## `twitch_auth_poll_token()`
 
-- `is_live`;
-- stream/user ID;
-- login/name;
-- game ID/name;
-- title;
-- viewer count;
-- started_at;
-- language.
+POST:
 
-### `twitch_get_stream(config, user_id, response)`
+```text
+id.twitch.tv/oauth2/token
+```
 
-Выполняет Helix-запрос `/streams?user_id=...`.
+Пока пользователь не подтвердил код, возвращает:
 
-### `twitch_parse_stream_response(json, stream)`
+```text
+BOT_AUTH_PENDING
+```
 
-Разбирает ответ. Пустой массив `data` означает OFFLINE. Наличие объекта означает ONLINE, после чего поля копируются в `TwitchStream`.
+После подтверждения заполняет `TwitchAuthToken`.
 
-## Application layer — `app.c`
+## `twitch_auth_validate_token()`
 
-### `console_ctrl_handler(control_type)`
+GET:
 
-Windows callback для Ctrl+C/закрытия консоли. Устанавливает флаг остановки.
+```text
+id.twitch.tv/oauth2/validate
+```
 
-### `stop_requested()`
+Проверяет access token и заполняет `TwitchTokenValidation`.
 
-Безопасно читает атомарный флаг завершения.
+---
 
-### `sleep_interruptible(seconds)`
+# 7. `include/twitch_refresh.h` / `src/twitch_refresh.c`
 
-Спит короткими шагами и позволяет быстро выйти после Ctrl+C вместо ожидания полного polling-интервала.
+## `url_encode_component()` — static
 
-### `copy_token_to_config(config, token)`
+Percent-encoding для refresh token перед `application/x-www-form-urlencoded` запросом.
 
-Копирует полученные OAuth-токены в рабочую конфигурацию процесса.
+Например специальный байт превращается в `%XX`.
 
-### `validate_current_token(config)`
+## `twitch_refresh_access_token()`
 
-Вызывает Twitch validation и дополнительно проверяет, что токен принадлежит ожидаемому Client ID.
+```c
+BotResult twitch_refresh_access_token(
+    const TwitchConfig *config,
+    const char *refresh_token,
+    TwitchAuthToken *new_token
+);
+```
 
-### `run_device_authorization(config, token)`
+Обменивает refresh token на новую пару токенов.
 
-Оркестрирует Device Code Flow: получает код, показывает данные пользователю и делает polling до успеха/истечения срока.
+При успехе `new_token` должен сразу попасть в DPAPI-хранилище.
 
-### `ensure_twitch_auth(config)`
+---
 
-Главная функция восстановления OAuth-сессии:
+# 8. `include/token_store.h` / `src/token_store.c`
 
-1. загрузить сохранённые токены;
-2. провалидировать access token;
-3. при необходимости выполнить refresh;
-4. если восстановление невозможно — запустить Device Code Flow;
-5. сохранить новую пару токенов.
+## `TokenStorePayload` — private
 
-### `get_current_stream(config, stream)`
+Внутренний binary payload:
 
-Вспомогательная обёртка: получить HTTP-ответ Twitch, распарсить `TwitchStream`, освободить `HttpResponse`.
+```c
+DWORD magic;
+DWORD version;
+TwitchAuthToken token;
+```
 
-### `log_stream_information(stream)`
+`magic` и `version` помогают отличить ожидаемый формат файла от случайных/устаревших данных.
 
-Пишет в лог название, категорию, viewers, время старта и язык активной трансляции.
+## `token_store_save()`
 
-### `monitor_stream(config)`
+1. собирает `TokenStorePayload`;
+2. вызывает `CryptProtectData()`;
+3. записывает зашифрованный blob в:
 
-Основной долгоживущий цикл бота. Получает baseline-состояние, каждые 30 секунд повторяет запрос и обнаруживает переходы ONLINE/OFFLINE. Здесь находится точка будущей отправки Telegram-уведомления.
+```text
+data/twitch_tokens.dat
+```
 
-### `app_run()`
+Сырые токены в лог не выводятся.
 
-Главный оркестратор приложения:
+## `token_store_load()`
 
-1. создаёт директории;
-2. запускает logger;
-3. загружает config;
-4. проверяет Интернет;
-5. восстанавливает OAuth;
-6. получает broadcaster ID;
-7. запускает `monitor_stream()`;
-8. штатно завершает приложение.
+1. читает файл;
+2. вызывает `CryptUnprotectData()`;
+3. проверяет magic/version;
+4. возвращает `TwitchAuthToken`.
 
-## Platform
+## `token_store_delete()`
 
-### `platform_create_directory(path)`
+Удаляет сохранённый файл токенов, когда сессия повреждена или её невозможно восстановить.
 
-Создаёт директорию в Windows или подтверждает, что она уже существует.
+---
+
+# 9. `include/twitch_user.h`
+
+## `TwitchUser`
+
+Модель объекта пользователя из Helix `/users`.
+
+| Поле | Twitch JSON |
+|---|---|
+| `id` | `id` |
+| `login` | `login` |
+| `display_name` | `display_name` |
+| `broadcaster_type` | `broadcaster_type` |
+| `description` | `description` |
+| `profile_image_url` | `profile_image_url` |
+
+Twitch ID хранится строкой, а не целым числом.
+
+---
+
+# 10. `include/twitch_api.h` / `src/twitch_api.c`
+
+## `utf8_to_wide()` — static
+
+Преобразует UTF-8 `char *` в Windows `wchar_t *`, потому что WinHTTP API использует wide strings.
+
+## `copy_json_string()` — static
+
+Берёт строковое поле из cJSON object и копирует в фиксированный C-массив структуры.
+
+## `twitch_get_user()`
+
+Формирует:
+
+```text
+GET https://api.twitch.tv/helix/users?login=<login>
+```
+
+Добавляет:
+
+```text
+Authorization: Bearer ...
+Client-Id: ...
+```
+
+Функция получает **сырой HTTP-ответ**, но не разбирает JSON.
+
+## `twitch_parse_user_response()`
+
+Разбирает:
+
+```json
+{
+  "data": [
+    {
+      "id": "...",
+      "login": "..."
+    }
+  ]
+}
+```
+
+и заполняет `TwitchUser`.
+
+---
+
+# 11. `include/twitch_stream.h` / `src/twitch_stream.c`
+
+## `TwitchStream`
+
+| Поле | Значение |
+|---|---|
+| `is_live` | 0 offline / 1 online |
+| `id` | ID конкретной трансляции |
+| `user_id` | ID стримера |
+| `user_login` | login стримера |
+| `user_name` | display name |
+| `game_id` | Twitch category/game ID |
+| `game_name` | название категории |
+| `title` | название стрима |
+| `viewer_count` | текущие зрители |
+| `started_at` | время начала |
+| `language` | язык стрима |
+
+## `twitch_get_stream()`
+
+Формирует:
+
+```text
+GET /helix/streams?user_id=<id>
+```
+
+и возвращает сырой `HttpResponse`.
+
+## `twitch_parse_stream_response()`
+
+Если `data` — пустой массив:
+
+```c
+stream->is_live = 0;
+```
+
+Если в массиве есть stream object:
+
+```c
+stream->is_live = 1;
+```
+
+и остальные поля копируются в `TwitchStream`.
+
+## `utf8_to_wide()` / `copy_json_string()` — static
+
+Локальные helper-функции, аналогичные функциям в `twitch_api.c`.
+
+---
+
+# 12. `src/app.c`
+
+Это основной orchestrator проекта.
+
+## `g_stop_requested`
+
+```c
+static volatile LONG g_stop_requested;
+```
+
+Флаг штатного завершения.
+
+## `console_ctrl_handler()`
+
+Windows callback для:
+
+```text
+Ctrl+C
+Ctrl+Break
+закрытие консоли
+```
+
+Не делает тяжёлой работы. Только выставляет `g_stop_requested=1`.
+
+## `stop_requested()`
+
+Атомарно читает флаг остановки через `InterlockedCompareExchange()`.
+
+## `sleep_interruptible()`
+
+Вместо одного `Sleep(30000)` спит по 1 секунде. Поэтому `Ctrl+C` обрабатывается быстро.
+
+## `copy_token_to_config()`
+
+Копирует `TwitchAuthToken` в `TwitchConfig` для дальнейших Helix-запросов.
+
+## `validate_current_token()`
+
+Вызывает `twitch_auth_validate_token()` и дополнительно сверяет:
+
+```text
+validation.client_id == config.client_id
+```
+
+Это не даёт случайно использовать токен от другого Twitch Application.
+
+## `run_device_authorization()`
+
+Полный интерактивный Device Code цикл:
+
+```text
+request device code
+      |
+      v
+показать user_code/URL
+      |
+      v
+Sleep(interval)
+      |
+      v
+poll token
+      |
+      +--> AUTH_PENDING -> повтор
+      |
+      +--> OK -> token
+```
+
+## `ensure_twitch_auth()`
+
+Главная функция восстановления OAuth-сессии.
+
+Порядок:
+
+```text
+token_store_load()
+      |
+      v
+validate access token
+      |
+      +--> valid -> использовать
+      |
+      +--> invalid
+              |
+              v
+        refresh token
+              |
+              +--> success -> сохранить новую пару
+              |
+              +--> fail -> Device Code Flow
+```
+
+## `get_current_stream()`
+
+Удобная обёртка:
+
+```text
+twitch_get_stream()
+        +
+twitch_parse_stream_response()
+```
+
+Она также гарантирует освобождение `HttpResponse`.
+
+## `log_stream_information()`
+
+Пишет:
+
+```text
+title
+category
+viewers
+started_at
+language
+```
+
+## `monitor_stream()`
+
+Основной долгоживущий цикл.
+
+На старте:
+
+```text
+get current state
+previous_live_state = current state
+```
+
+Затем каждые 30 секунд:
+
+1. при необходимости проверяет OAuth;
+2. вызывает `get_current_stream()`;
+3. при `BOT_ERR_AUTH` пытается восстановить сессию;
+4. при временной ошибке сети не убивает процесс;
+5. сравнивает прошлое и новое состояние.
+
+### OFFLINE -> ONLINE
+
+```c
+previous_live_state == 0 &&
+current_stream.is_live != 0
+```
+
+Лог:
+
+```text
+STREAM STARTED
+```
+
+Именно сюда будет подключён Telegram.
+
+### ONLINE -> OFFLINE
+
+```c
+previous_live_state != 0 &&
+current_stream.is_live == 0
+```
+
+Лог:
+
+```text
+STREAM ENDED
+```
+
+### Состояние не поменялось
+
+Логируется только `DEBUG`.
+
+## `app_run()`
+
+Главный жизненный цикл:
+
+```text
+создать logs/
+инициализировать logger
+установить Ctrl+C handler
+создать data/
+прочитать config.ini
+проверить сеть
+восстановить Twitch OAuth
+получить TwitchUser
+получить broadcaster_id
+запустить monitor_stream()
+shutdown
+```
+
+---
+
+# 13. `src/main.c`
 
 ## `main()`
 
-Минимальная точка входа:
+Намеренно минимальный:
 
 ```c
 int main(void)
@@ -270,4 +741,99 @@ int main(void)
 }
 ```
 
-Вся бизнес-логика намеренно находится вне `main.c`.
+`main.c` знает только о запуске приложения. Вся предметная логика находится в модулях.
+
+---
+
+# 14. `third_party/cjson`
+
+В восстановленном архиве присутствует небольшой cJSON-совместимый parser.
+
+Используются только:
+
+```text
+cJSON_Parse
+cJSON_Delete
+cJSON_GetObjectItemCaseSensitive
+cJSON_GetArraySize
+cJSON_GetArrayItem
+cJSON_IsString
+cJSON_IsNumber
+cJSON_IsArray
+cJSON_IsObject
+```
+
+## `cJSON`
+
+Дерево JSON.
+
+Главные поля, с которыми косвенно работает проект:
+
+```text
+type
+valuestring
+valueint
+child
+next
+string
+```
+
+Приложение не должно вручную менять это дерево — только читать поля через функции API и в конце вызывать `cJSON_Delete()`.
+
+---
+
+# 15. Где что менять
+
+Если нужно изменить интервал опроса Twitch:
+
+```c
+#define STREAM_POLL_INTERVAL_SECONDS 30
+```
+
+в `src/app.c`.
+
+Если нужно добавить новый Helix endpoint — создавать отдельный модуль по модели:
+
+```text
+twitch_stream.c
+twitch_api.c
+```
+
+Если нужно подключить Telegram, точка события уже есть внутри:
+
+```c
+monitor_stream()
+```
+
+в ветке:
+
+```text
+OFFLINE -> ONLINE
+```
+
+Если нужно добавить новый тип ошибки — менять:
+
+```text
+include/bot_result.h
+src/bot_result.c
+```
+
+Если нужно добавить параметр INI — менять:
+
+```text
+include/config.h
+src/config.c
+config.example.ini
+```
+
+---
+
+# 16. Важные правила проекта
+
+1. Никогда не логировать access/refresh token.
+2. После каждого `http_get/http_post` освобождать `HttpResponse`.
+3. После `cJSON_Parse` обязательно делать `cJSON_Delete`.
+4. `config.ini`, `data/` и `logs/` не коммитить.
+5. Новый refresh token сохранять сразу после refresh.
+6. Не считать `Initial stream status: ONLINE` событием начала эфира.
+7. Ошибка одного polling-запроса не должна автоматически завершать постоянно работающего бота.

@@ -1,6 +1,6 @@
 # Архитектура Twitch Stream Bot
 
-## Общий поток
+## 1. Общая схема
 
 ```text
 main()
@@ -8,100 +8,239 @@ main()
   v
 app_run()
   |
-  +--> platform_create_directory()
-  +--> logger_init()
-  +--> config_load() / config_validate()
-  +--> Internet test via http_get()
-  |
+  +--> config / logger / directories
   +--> ensure_twitch_auth()
-  |      |
-  |      +--> token_store_load()
-  |      +--> twitch_auth_validate_token()
-  |      +--> twitch_refresh_access_token()  [если access token недействителен]
-  |      +--> run_device_authorization()     [если сохранённой сессии нет]
-  |      +--> token_store_save()
-  |
   +--> twitch_get_user()
-  +--> twitch_parse_user_response()
   |
-  +--> monitor_stream()
+  +--> run_bot_loop()
          |
-         +--> twitch_get_stream()
-         +--> twitch_parse_stream_response()
-         +--> sleep 30 s
-         +--> повтор
+         +--> EventSub WebSocket
+         |      +--> session_welcome
+         |      +--> channel.chat.message subscription
+         |      +--> Twitch chat command
+         |      +--> chat_command_parse()
+         |      +--> twitch_chat_send_message()
+         |
+         +--> каждые 30 секунд: stream status
+         |      +--> OFFLINE -> ONLINE
+         |      +--> Telegram notification
+         |      +--> ONLINE -> OFFLINE
+         |
+         +--> периодическая OAuth validation
+         +--> EventSub reconnect при разрыве
 ```
 
-## Слои
+## 2. Слои проекта
 
 ### Application layer
 
-Файлы: `src/main.c`, `src/app.c`, `include/app.h`.
+Файлы:
 
-`main()` передаёт управление `app_run()`. В `app.c` собран жизненный цикл программы: инициализация, OAuth, получение broadcaster ID, запуск и завершение мониторинга.
+```text
+src/main.c
+src/app.c
+include/app.h
+```
+
+Отвечает за порядок запуска, жизненный цикл приложения, OAuth-сессию и основной цикл бота.
 
 ### Configuration and diagnostics
 
-Файлы: `config.c`, `logger.c`, `bot_result.c`.
+```text
+src/config.c
+src/logger.c
+src/bot_result.c
+```
 
-Этот слой отвечает за INI-конфигурацию, единые коды результата и журналирование. Секретные значения не должны выводиться в лог.
+Конфигурация, журналы и единый тип кодов возврата.
 
 ### Platform layer
 
-Файл: `platform_win.c`.
+```text
+src/platform_win.c
+```
 
-Windows-зависимые операции, которые не относятся к Twitch API. Сейчас основная задача — создание служебных директорий.
+Windows-зависимые операции файловой системы.
 
 ### HTTP transport
 
-Файл: `http_client.c`.
+```text
+src/http_client.c
+```
 
-Обёртка над WinHTTP. Предоставляет единые `http_get()`, `http_post()` и `http_response_free()`. Twitch-модули работают через этот слой вместо прямого управления WinHTTP handles.
+Единая обёртка над WinHTTP. Twitch-модули не должны напрямую создавать WinHTTP handles.
 
 ### Twitch OAuth
 
-Файлы: `twitch_auth.c`, `twitch_refresh.c`, `token_store.c`.
+```text
+src/twitch_auth.c
+src/twitch_refresh.c
+src/token_store.c
+```
 
-`twitch_auth` реализует Device Code Flow и validation. `twitch_refresh` получает новую пару токенов. `token_store` шифрует токены Windows DPAPI и хранит их локально.
+Получение, проверка, обновление и безопасное локальное хранение OAuth-токенов.
 
 ### Twitch Helix API
 
-Файлы: `twitch_api.c`, `twitch_stream.c`.
-
-`twitch_api` получает данные пользователя. `twitch_stream` проверяет состояние трансляции и преобразует JSON в `TwitchStream`.
-
-## Модель состояния трансляции
-
-Монитор хранит только предыдущее логическое состояние:
-
 ```text
-previous_live_state
-current_stream.is_live
+src/twitch_api.c
+src/twitch_stream.c
 ```
 
-Переходы:
+Работа с `/helix/users` и `/helix/streams`.
 
-| Было | Стало | Событие |
-| --- | --- | --- |
-| OFFLINE | OFFLINE | без события |
-| OFFLINE | ONLINE | `STREAM STARTED` |
-| ONLINE | ONLINE | без события |
-| ONLINE | OFFLINE | `STREAM ENDED` |
+### JSON
 
-Первое состояние после запуска используется только как baseline. Поэтому запуск бота посреди эфира не имитирует новое начало стрима.
+```text
+third_party/cjson/
+```
 
-## Владение памятью
+Разбор JSON-ответов Twitch.
 
-`HttpResponse.body` выделяется HTTP-клиентом динамически. После обработки вызывающий код обязан вызвать `http_response_free()`.
+## 3. Основные данные
 
-Большинство остальных объектов — структуры фиксированного размера на стеке.
+### `AppConfig`
 
-## Обработка ошибок
+Корневая конфигурация приложения:
 
-Модули возвращают `BotResult`. Сетевые ошибки в основном цикле мониторинга не должны мгновенно завершать приложение: они логируются, после чего следующая итерация может повторить запрос.
+```text
+AppConfig
+├── TwitchConfig
+├── TelegramConfig
+└── BotConfig
+```
 
-Ошибка авторизации обрабатывается отдельно: приложение пытается восстановить OAuth-сессию и повторить Twitch-запрос.
+В `app_run()` создаётся один объект `AppConfig`, который передаётся дальше по указателю.
 
-## Завершение
+### `HttpResponse`
 
-Windows console control handler не завершает процесс внутри callback. Он выставляет атомарный флаг `g_stop_requested`. Основной цикл замечает его, выходит из `monitor_stream()`, закрывает logger и завершает приложение штатно.
+Каждый HTTP-запрос возвращает:
+
+```text
+HttpResponse
+├── status_code
+├── body
+└── body_size
+```
+
+`body` выделяется динамически внутри HTTP-модуля. После использования необходимо вызвать:
+
+```c
+http_response_free(&response);
+```
+
+### OAuth
+
+```text
+TwitchDeviceCode
+     |
+     v
+TwitchAuthToken
+     |
+     +--> access_token
+     +--> refresh_token
+     |
+     v
+data/twitch_tokens.dat
+```
+
+`data/twitch_tokens.dat` хранит зашифрованную DPAPI-версию структуры с токенами.
+
+### Поток
+
+`TwitchStream.is_live` является главным состоянием мониторинга:
+
+```text
+0 = OFFLINE
+1 = ONLINE
+```
+
+Монитор хранит предыдущее состояние и сравнивает его с текущим:
+
+```text
+previous=0 current=1 -> STREAM STARTED
+previous=1 current=0 -> STREAM ENDED
+```
+
+## 4. Почему стартовое ONLINE не считается началом стрима
+
+При запуске `monitor_stream()` сначала получает текущее состояние и записывает его в `previous_live_state`.
+
+Если бот стартует во время уже идущего эфира:
+
+```text
+Initial stream status: ONLINE
+```
+
+событие `STREAM STARTED` не создаётся. Это защищает будущую Telegram-рассылку от повторного уведомления после перезапуска бота.
+
+## 5. Обработка ошибок
+
+Большинство функций возвращают `BotResult`.
+
+Смысл:
+
+```text
+BOT_OK             операция успешна
+BOT_AUTH_PENDING   Device Code ещё не подтверждён
+BOT_ERR_CONFIG     ошибка конфигурации
+BOT_ERR_FILE       файловая ошибка
+BOT_ERR_NETWORK    WinHTTP/сеть
+BOT_ERR_AUTH       OAuth/401/403
+BOT_ERR_JSON       неожиданный или повреждённый JSON
+BOT_ERR_TWITCH     Twitch API вернул ошибку
+BOT_ERR_TELEGRAM   зарезервировано под Telegram
+BOT_ERR_STORAGE    локальное хранилище токенов
+```
+
+Критические ошибки этапа инициализации завершают процесс. Ошибка отдельной проверки стрима внутри долгого цикла логируется, после чего цикл продолжается.
+
+## 6. Владение памятью
+
+Особенно важно для `HttpResponse`.
+
+`http_get()` / `http_post()`:
+
+- выделяют `response.body` через `malloc/realloc`;
+- вызывающий код получает владение буфером;
+- вызывающий код обязан вызвать `http_response_free()`.
+
+JSON:
+
+- `cJSON_Parse()` создаёт дерево;
+- `cJSON_Delete()` освобождает всё дерево;
+- указатели, возвращённые `cJSON_GetObjectItemCaseSensitive()` и `cJSON_GetArrayItem()`, принадлежат дереву и отдельно не освобождаются.
+
+DPAPI:
+
+- `CryptProtectData()` и `CryptUnprotectData()` выделяют память через Windows;
+- она освобождается `LocalFree()`.
+
+## 7. Периодические процессы
+
+На текущем этапе работают два интервала:
+
+```text
+Проверка стрима:      каждые 30 секунд
+Проверка OAuth token: примерно раз в час
+```
+
+Цикл можно остановить `Ctrl+C`. Обработчик Windows выставляет `g_stop_requested`, после чего основной цикл завершает работу штатно.
+
+## 8. Следующие модули
+
+Логичное продолжение проекта:
+
+```text
+telegram.c/.h
+    -> sendMessage при STREAM STARTED
+
+EventSub WebSocket
+    -> заменить polling событиями stream.online/stream.offline
+
+chat.c / commands.c
+    -> команды !help, !uptime, !game, !title ...
+
+storage.c
+    -> SQLite для состояния/дедупликации
+```

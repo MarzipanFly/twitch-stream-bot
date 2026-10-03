@@ -6,20 +6,15 @@
 #include "http_client.h"
 #include "twitch_user.h"
 
-/*
- * Получает информацию о Twitch-пользователе
- * по его login
- */
-
 BotResult twitch_get_user(
-		const TwitchConfig *config,
-		const char *login,
-		HttpResponse *response
+    const TwitchConfig *config,
+    const char *login,
+    HttpResponse *response
 );
 
 BotResult twitch_parse_user_response(
-		const char *json,
-		TwitchUser *user
+    const char *json,
+    TwitchUser *user
 );
 
-#endif // TWITCH_API_H
+#endif

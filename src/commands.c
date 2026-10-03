@@ -19,16 +19,19 @@ int command_parse(
 {
     int i;
 
+
     if (options == NULL)
     {
         return 0;
     }
+
 
     memset(
         options,
         0,
         sizeof(*options)
     );
+
 
     for (i = 1; i < argc; ++i)
     {
@@ -59,6 +62,30 @@ int command_parse(
         else if (
             strcmp(
                 argv[i],
+                "--test-twitch-chat"
+            ) == 0)
+        {
+            options->test_twitch_chat = 1;
+        }
+        else if (
+            strcmp(
+                argv[i],
+                "--test-eventsub-chat"
+            ) == 0)
+        {
+            options->test_eventsub_chat = 1;
+        }
+        else if (
+            strcmp(
+                argv[i],
+                "--test-twitch-command"
+            ) == 0)
+        {
+            options->test_twitch_command = 1;
+        }
+        else if (
+            strcmp(
+                argv[i],
                 "--help"
             ) == 0 ||
             strcmp(
@@ -76,12 +103,15 @@ int command_parse(
                 argv[i]
             );
 
+
             return 0;
         }
     }
 
+
     /*
-     * --dry-run относится только к тесту старта стрима.
+     * --dry-run относится только
+     * к тесту старта стрима.
      */
     if (
         options->dry_run &&
@@ -92,24 +122,31 @@ int command_parse(
             "--dry-run requires --test-stream\n"
         );
 
+
         return 0;
     }
 
+
     /*
-     * Два интерактивных тестовых режима одновременно
-     * запускать не нужно.
+     * Одновременно запускаем
+     * только один тестовый режим.
      */
     if (
-        options->test_stream &&
-        options->test_chat)
+        options->test_stream +
+        options->test_chat +
+        options->test_twitch_chat +
+        options->test_eventsub_chat +
+        options->test_twitch_command > 1)
     {
         fprintf(
             stderr,
-            "--test-stream and --test-chat cannot be used together\n"
+            "Only one test mode can be used at a time\n"
         );
+
 
         return 0;
     }
+
 
     return 1;
 }
@@ -125,15 +162,19 @@ void command_print_help(
             "twitchbot";
     }
 
+
     printf(
         "Usage:\n"
         "  %s [options]\n"
         "\n"
         "Options:\n"
-        "  --test-stream   Simulate stream start\n"
-        "  --dry-run       Do not send test stream notification\n"
-        "  --test-chat     Open local chat command test console\n"
-        "  --help, -h      Show this help\n",
+        "  --test-stream          Simulate stream start\n"
+        "  --dry-run              Do not send test stream notification\n"
+        "  --test-chat            Open local chat command test console\n"
+        "  --test-twitch-chat     Send a real test message to Twitch chat\n"
+        "  --test-eventsub-chat   Test EventSub chat processing offline\n"
+        "  --test-twitch-command  Wait for one real Twitch command and reply\n"
+        "  --help, -h             Show this help\n",
         program_name
     );
 }
@@ -145,8 +186,10 @@ void command_print_help(
  * ============================================================
  */
 
+
 /*
- * Пропускает пробелы и табуляцию в начале строки.
+ * Пропускает пробелы и табуляцию
+ * в начале строки.
  */
 static const char *chat_skip_spaces(
     const char *text
@@ -157,6 +200,7 @@ static const char *chat_skip_spaces(
         return NULL;
     }
 
+
     while (
         *text == ' ' ||
         *text == '\t')
@@ -164,13 +208,15 @@ static const char *chat_skip_spaces(
         ++text;
     }
 
+
     return text;
 }
 
 
 /*
  * Сравнивает найденное имя команды
- * с ожидаемым именем без создания временной строки.
+ * с ожидаемым именем без создания
+ * временной строки.
  */
 static int chat_command_name_equals(
     const char *command_name,
@@ -180,6 +226,7 @@ static int chat_command_name_equals(
 {
     size_t expected_length;
 
+
     if (
         command_name == NULL ||
         expected == NULL)
@@ -187,10 +234,12 @@ static int chat_command_name_equals(
         return 0;
     }
 
+
     expected_length =
         strlen(
             expected
         );
+
 
     if (
         command_length !=
@@ -198,6 +247,7 @@ static int chat_command_name_equals(
     {
         return 0;
     }
+
 
     return
         strncmp(
@@ -222,6 +272,7 @@ static int chat_response_is_valid(
         return 0;
     }
 
+
     if (
         (size_t)written >=
         buffer_size)
@@ -229,28 +280,34 @@ static int chat_response_is_valid(
         return 0;
     }
 
+
     return 1;
 }
 
 
 /*
  * Один раз инициализирует генератор
- * псевдослучайных чисел для игровых команд.
+ * псевдослучайных чисел.
  */
 static void chat_random_init(void)
 {
-    static int initialized = 0;
+    static int initialized =
+        0;
+
 
     if (initialized)
     {
         return;
     }
 
+
     srand(
         (unsigned int)time(NULL)
     );
 
-    initialized = 1;
+
+    initialized =
+        1;
 }
 
 
@@ -271,6 +328,7 @@ int chat_command_parse(
 
     size_t name_length;
 
+
     if (
         message == NULL ||
         command == NULL)
@@ -278,22 +336,27 @@ int chat_command_parse(
         return 0;
     }
 
+
     command->type =
         CHAT_COMMAND_NONE;
 
     command->arguments =
         NULL;
 
+
     if (*message != prefix)
     {
         return 0;
     }
 
+
     name_start =
         message + 1;
 
+
     name_end =
         name_start;
+
 
     while (
         *name_end != '\0' &&
@@ -303,24 +366,29 @@ int chat_command_parse(
         ++name_end;
     }
 
+
     name_length =
         (size_t)(
             name_end -
             name_start
         );
 
+
     if (name_length == 0)
     {
         command->type =
             CHAT_COMMAND_UNKNOWN;
 
+
         return 1;
     }
+
 
     arguments =
         chat_skip_spaces(
             name_end
         );
+
 
     if (
         arguments != NULL &&
@@ -330,9 +398,13 @@ int chat_command_parse(
             arguments;
     }
 
+
     /*
-     * Информационные команды.
+     * ========================================================
+     * ИНФОРМАЦИОННЫЕ КОМАНДЫ
+     * ========================================================
      */
+
     if (
         chat_command_name_equals(
             name_start,
@@ -369,14 +441,23 @@ int chat_command_parse(
             CHAT_COMMAND_HELP;
     }
 
+
     /*
-     * Игровые команды.
+     * ========================================================
+     * ИГРОВЫЕ КОМАНДЫ
+     * ========================================================
      */
+
     else if (
         chat_command_name_equals(
             name_start,
             name_length,
             "монетка"
+        ) ||
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "монета"
         ) ||
         chat_command_name_equals(
             name_start,
@@ -392,6 +473,11 @@ int chat_command_parse(
             name_start,
             name_length,
             "кости"
+        ) ||
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "кубик"
         ) ||
         chat_command_name_equals(
             name_start,
@@ -443,6 +529,7 @@ int chat_command_parse(
             CHAT_COMMAND_UNKNOWN;
     }
 
+
     return 1;
 }
 
@@ -461,6 +548,7 @@ int chat_command_build_response(
 {
     int written;
 
+
     if (
         command == NULL ||
         buffer == NULL ||
@@ -469,10 +557,17 @@ int chat_command_build_response(
         return 0;
     }
 
+
     chat_random_init();
+
 
     switch (command->type)
     {
+        /*
+         * ====================================================
+         * !тг
+         * ====================================================
+         */
         case CHAT_COMMAND_TELEGRAM:
 
             if (
@@ -497,6 +592,7 @@ int chat_command_build_response(
                     );
             }
 
+
             return
                 chat_response_is_valid(
                     written,
@@ -504,6 +600,11 @@ int chat_command_build_response(
                 );
 
 
+        /*
+         * ====================================================
+         * !команды
+         * ====================================================
+         */
         case CHAT_COMMAND_HELP:
 
             written =
@@ -513,6 +614,7 @@ int chat_command_build_response(
                     "Команды: !тг, !монетка, !кости, !шар <вопрос>, !слот"
                 );
 
+
             return
                 chat_response_is_valid(
                     written,
@@ -520,6 +622,11 @@ int chat_command_build_response(
                 );
 
 
+        /*
+         * ====================================================
+         * !монетка
+         * ====================================================
+         */
         case CHAT_COMMAND_COIN:
 
             if (
@@ -542,6 +649,7 @@ int chat_command_build_response(
                     );
             }
 
+
             return
                 chat_response_is_valid(
                     written,
@@ -549,10 +657,16 @@ int chat_command_build_response(
                 );
 
 
+        /*
+         * ====================================================
+         * !кости
+         * ====================================================
+         */
         case CHAT_COMMAND_DICE:
         {
             int value =
                 1 + rand() % 6;
+
 
             written =
                 snprintf(
@@ -562,6 +676,7 @@ int chat_command_build_response(
                     value
                 );
 
+
             return
                 chat_response_is_valid(
                     written,
@@ -570,6 +685,11 @@ int chat_command_build_response(
         }
 
 
+        /*
+         * ====================================================
+         * !шар
+         * ====================================================
+         */
         case CHAT_COMMAND_EIGHT_BALL:
         {
             static const char *answers[] =
@@ -584,7 +704,9 @@ int chat_command_build_response(
                 "Нет."
             };
 
+
             int answer_index;
+
 
             if (
                 command->arguments == NULL ||
@@ -597,6 +719,7 @@ int chat_command_build_response(
                         "Использование: !шар <вопрос>"
                     );
 
+
                 return
                     chat_response_is_valid(
                         written,
@@ -604,12 +727,14 @@ int chat_command_build_response(
                     );
             }
 
+
             answer_index =
                 rand() %
                 (
                     sizeof(answers) /
                     sizeof(answers[0])
                 );
+
 
             written =
                 snprintf(
@@ -619,6 +744,7 @@ int chat_command_build_response(
                     answers[answer_index]
                 );
 
+
             return
                 chat_response_is_valid(
                     written,
@@ -627,6 +753,11 @@ int chat_command_build_response(
         }
 
 
+        /*
+         * ====================================================
+         * !слот
+         * ====================================================
+         */
         case CHAT_COMMAND_SLOT:
         {
             static const char *symbols[] =
@@ -638,9 +769,11 @@ int chat_command_build_response(
                 "ЗВЕЗДА"
             };
 
+
             int first;
             int second;
             int third;
+
 
             first =
                 rand() % 5;
@@ -650,6 +783,7 @@ int chat_command_build_response(
 
             third =
                 rand() % 5;
+
 
             if (
                 first == second &&
@@ -677,6 +811,7 @@ int chat_command_build_response(
                         symbols[third]
                     );
             }
+
 
             return
                 chat_response_is_valid(

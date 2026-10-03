@@ -1,19 +1,36 @@
+# Secrets / local configuration
 config.ini
+
+# Runtime data
 logs/
 data/
+
+# Build output
 bin/
 debug/
 release/
 build-*/
+
+# qmake
 .qmake.stash
 Makefile
 Makefile.Debug
 Makefile.Release
+Makefile.*
+
+# Object / binary files
 *.o
 *.obj
 *.exe
 *.dll
 *.a
 *.lib
+
+# Qt Creator local settings
 *.pro.user
 *.pro.user.*
+*.user
+*.user.*
+
+# Logs
+*.log

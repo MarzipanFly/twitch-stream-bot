@@ -5,13 +5,12 @@
 #include "config.h"
 #include "http_client.h"
 
-#define TWITCH_STREAM_ID_SIZE       64
-#define TWITCH_STREAM_USER_SIZE     128
-#define TWITCH_STREAM_GAME_SIZE     256
-#define TWITCH_STREAM_TITLE_SIZE    512
-#define TWITCH_STREAM_TIME_SIZE     64
+#define TWITCH_STREAM_ID_SIZE 64
+#define TWITCH_STREAM_USER_SIZE 128
+#define TWITCH_STREAM_GAME_SIZE 256
+#define TWITCH_STREAM_TITLE_SIZE 512
+#define TWITCH_STREAM_TIME_SIZE 64
 #define TWITCH_STREAM_LANGUAGE_SIZE 16
-
 
 typedef struct
 {
@@ -35,18 +34,15 @@ typedef struct
 
 } TwitchStream;
 
-
 BotResult twitch_get_stream(
     const TwitchConfig *config,
     const char *user_id,
     HttpResponse *response
 );
 
-
 BotResult twitch_parse_stream_response(
     const char *json,
     TwitchStream *stream
 );
-
 
 #endif

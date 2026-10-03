@@ -4,9 +4,7 @@
 typedef enum
 {
     BOT_OK = 0,
-
     BOT_AUTH_PENDING,
-
     BOT_ERR_UNKNOWN,
     BOT_ERR_CONFIG,
     BOT_ERR_FILE,
@@ -16,12 +14,8 @@ typedef enum
     BOT_ERR_TWITCH,
     BOT_ERR_TELEGRAM,
     BOT_ERR_STORAGE
-
 } BotResult;
 
-/*
- * Возвращает текстовое сообщение ошибки
- */
 const char *bot_result_to_string(BotResult result);
 
-#endif // BOT_RESULT_H
+#endif

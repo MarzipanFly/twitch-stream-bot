@@ -9,9 +9,7 @@
 #include <string.h>
 #include <wchar.h>
 
-
 #define TWITCH_API_HOST L"api.twitch.tv"
-
 
 static int utf8_to_wide(
     const char *input,
@@ -21,14 +19,12 @@ static int utf8_to_wide(
 {
     int result;
 
-
     if (input == NULL ||
         output == NULL ||
         output_size <= 0)
     {
         return 0;
     }
-
 
     result =
         MultiByteToWideChar(
@@ -40,10 +36,8 @@ static int utf8_to_wide(
             output_size
         );
 
-
     return result > 0;
 }
-
 
 static void copy_json_string(
     cJSON *object,
@@ -54,7 +48,6 @@ static void copy_json_string(
 {
     cJSON *item;
 
-
     if (object == NULL ||
         field_name == NULL ||
         destination == NULL ||
@@ -63,22 +56,18 @@ static void copy_json_string(
         return;
     }
 
-
     item =
         cJSON_GetObjectItemCaseSensitive(
             object,
             field_name
         );
 
-
     if (!cJSON_IsString(item) ||
         item->valuestring == NULL)
     {
         destination[0] = '\0';
-
         return;
     }
-
 
     snprintf(
         destination,
@@ -87,7 +76,6 @@ static void copy_json_string(
         item->valuestring
     );
 }
-
 
 BotResult twitch_get_stream(
     const TwitchConfig *config,
@@ -104,14 +92,12 @@ BotResult twitch_get_stream(
 
     BotResult result;
 
-
     if (config == NULL ||
         user_id == NULL ||
         response == NULL)
     {
         return BOT_ERR_TWITCH;
     }
-
 
     if (config->client_id[0] == '\0' ||
         config->access_token[0] == '\0' ||
@@ -120,66 +106,55 @@ BotResult twitch_get_stream(
         return BOT_ERR_CONFIG;
     }
 
-
     if (!utf8_to_wide(
             config->client_id,
             wide_client_id,
-            sizeof(wide_client_id) /
-                sizeof(wide_client_id[0])))
+            (int)(sizeof(wide_client_id) /
+                  sizeof(wide_client_id[0]))))
     {
         return BOT_ERR_TWITCH;
     }
-
 
     if (!utf8_to_wide(
             config->access_token,
             wide_access_token,
-            sizeof(wide_access_token) /
-                sizeof(wide_access_token[0])))
+            (int)(sizeof(wide_access_token) /
+                  sizeof(wide_access_token[0]))))
     {
         return BOT_ERR_TWITCH;
     }
-
 
     if (!utf8_to_wide(
             user_id,
             wide_user_id,
-            sizeof(wide_user_id) /
-                sizeof(wide_user_id[0])))
+            (int)(sizeof(wide_user_id) /
+                  sizeof(wide_user_id[0]))))
     {
         return BOT_ERR_TWITCH;
     }
-
 
     swprintf(
         headers,
         sizeof(headers) /
             sizeof(headers[0]),
-
         L"Authorization: Bearer %ls\r\n"
         L"Client-Id: %ls\r\n",
-
         wide_access_token,
         wide_client_id
     );
-
 
     swprintf(
         path,
         sizeof(path) /
             sizeof(path[0]),
-
         L"/helix/streams?user_id=%ls",
-
         wide_user_id
     );
-
 
     log_debug(
         "Requesting Twitch stream status for user ID: %s",
         user_id
     );
-
 
     result =
         http_get(
@@ -189,24 +164,20 @@ BotResult twitch_get_stream(
             response
         );
 
-
     if (result != BOT_OK)
     {
         return result;
     }
-
 
     log_debug(
         "Twitch stream HTTP status: %lu",
         response->status_code
     );
 
-
     if (response->status_code == 200)
     {
         return BOT_OK;
     }
-
 
     if (response->status_code == 401)
     {
@@ -217,7 +188,6 @@ BotResult twitch_get_stream(
         return BOT_ERR_AUTH;
     }
 
-
     if (response->body != NULL)
     {
         log_error(
@@ -226,10 +196,8 @@ BotResult twitch_get_stream(
         );
     }
 
-
     return BOT_ERR_TWITCH;
 }
-
 
 BotResult twitch_parse_stream_response(
     const char *json,
@@ -241,13 +209,11 @@ BotResult twitch_parse_stream_response(
     cJSON *item;
     cJSON *viewer_count;
 
-
     if (json == NULL ||
         stream == NULL)
     {
         return BOT_ERR_JSON;
     }
-
 
     memset(
         stream,
@@ -255,18 +221,15 @@ BotResult twitch_parse_stream_response(
         sizeof(*stream)
     );
 
-
     root =
         cJSON_Parse(
             json
         );
 
-
     if (root == NULL)
     {
         return BOT_ERR_JSON;
     }
-
 
     data =
         cJSON_GetObjectItemCaseSensitive(
@@ -274,21 +237,14 @@ BotResult twitch_parse_stream_response(
             "data"
         );
 
-
     if (!cJSON_IsArray(data))
     {
         cJSON_Delete(root);
-
         return BOT_ERR_JSON;
     }
 
-
     /*
-     * Самый важный момент.
-     *
-     * Если массив data пустой,
-     * значит этот пользователь сейчас
-     * не ведёт прямую трансляцию.
+     * Empty data array = broadcaster is offline.
      */
     if (cJSON_GetArraySize(data) == 0)
     {
@@ -299,13 +255,11 @@ BotResult twitch_parse_stream_response(
         return BOT_OK;
     }
 
-
     item =
         cJSON_GetArrayItem(
             data,
             0
         );
-
 
     if (!cJSON_IsObject(item))
     {
@@ -314,9 +268,7 @@ BotResult twitch_parse_stream_response(
         return BOT_ERR_JSON;
     }
 
-
     stream->is_live = 1;
-
 
     copy_json_string(
         item,
@@ -325,14 +277,12 @@ BotResult twitch_parse_stream_response(
         sizeof(stream->id)
     );
 
-
     copy_json_string(
         item,
         "user_id",
         stream->user_id,
         sizeof(stream->user_id)
     );
-
 
     copy_json_string(
         item,
@@ -341,14 +291,12 @@ BotResult twitch_parse_stream_response(
         sizeof(stream->user_login)
     );
 
-
     copy_json_string(
         item,
         "user_name",
         stream->user_name,
         sizeof(stream->user_name)
     );
-
 
     copy_json_string(
         item,
@@ -357,14 +305,12 @@ BotResult twitch_parse_stream_response(
         sizeof(stream->game_id)
     );
 
-
     copy_json_string(
         item,
         "game_name",
         stream->game_name,
         sizeof(stream->game_name)
     );
-
 
     copy_json_string(
         item,
@@ -373,14 +319,12 @@ BotResult twitch_parse_stream_response(
         sizeof(stream->title)
     );
 
-
     copy_json_string(
         item,
         "started_at",
         stream->started_at,
         sizeof(stream->started_at)
     );
-
 
     copy_json_string(
         item,
@@ -389,13 +333,11 @@ BotResult twitch_parse_stream_response(
         sizeof(stream->language)
     );
 
-
     viewer_count =
         cJSON_GetObjectItemCaseSensitive(
             item,
             "viewer_count"
         );
-
 
     if (cJSON_IsNumber(viewer_count))
     {
@@ -403,11 +345,7 @@ BotResult twitch_parse_stream_response(
             viewer_count->valueint;
     }
 
-
-    cJSON_Delete(
-        root
-    );
-
+    cJSON_Delete(root);
 
     return BOT_OK;
 }

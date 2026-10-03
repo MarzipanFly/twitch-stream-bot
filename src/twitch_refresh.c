@@ -7,17 +7,9 @@
 #include <stdio.h>
 #include <string.h>
 
-
 #define TWITCH_AUTH_HOST L"id.twitch.tv"
-
 #define TWITCH_TOKEN_PATH L"/oauth2/token"
 
-
-/*
- * Refresh token обязательно нужно URL encode.
- *
- * Twitch прямо требует это для refresh_token.
- */
 static int url_encode_component(
     const char *input,
     char *output,
@@ -30,7 +22,6 @@ static int url_encode_component(
     size_t input_index = 0;
     size_t output_index = 0;
 
-
     if (input == NULL ||
         output == NULL ||
         output_size == 0)
@@ -38,12 +29,10 @@ static int url_encode_component(
         return 0;
     }
 
-
     while (input[input_index] != '\0')
     {
         unsigned char c =
             (unsigned char)input[input_index];
-
 
         int safe =
             (c >= 'A' && c <= 'Z') ||
@@ -54,7 +43,6 @@ static int url_encode_component(
             c == '.' ||
             c == '~';
 
-
         if (safe)
         {
             if (output_index + 1 >=
@@ -62,7 +50,6 @@ static int url_encode_component(
             {
                 return 0;
             }
-
 
             output[output_index++] =
                 (char)c;
@@ -75,31 +62,20 @@ static int url_encode_component(
                 return 0;
             }
 
-
-            output[output_index++] =
-                '%';
-
-
+            output[output_index++] = '%';
             output[output_index++] =
                 hex[(c >> 4) & 0x0F];
-
-
             output[output_index++] =
                 hex[c & 0x0F];
         }
 
-
         ++input_index;
     }
 
-
-    output[output_index] =
-        '\0';
-
+    output[output_index] = '\0';
 
     return 1;
 }
-
 
 BotResult twitch_refresh_access_token(
     const TwitchConfig *config,
@@ -119,9 +95,7 @@ BotResult twitch_refresh_access_token(
     cJSON *message_json = NULL;
 
     char encoded_refresh_token[8192];
-
     char body[10000];
-
 
     if (config == NULL ||
         refresh_token == NULL ||
@@ -130,20 +104,17 @@ BotResult twitch_refresh_access_token(
         return BOT_ERR_AUTH;
     }
 
-
     if (config->client_id[0] == '\0' ||
         refresh_token[0] == '\0')
     {
         return BOT_ERR_AUTH;
     }
 
-
     memset(
         new_token,
         0,
         sizeof(*new_token)
     );
-
 
     if (!url_encode_component(
             refresh_token,
@@ -154,37 +125,31 @@ BotResult twitch_refresh_access_token(
             "Failed to URL encode Twitch refresh token"
         );
 
-
         return BOT_ERR_AUTH;
     }
-
 
     snprintf(
         body,
         sizeof(body),
-
         "grant_type=refresh_token"
         "&refresh_token=%s"
         "&client_id=%s",
-
         encoded_refresh_token,
         config->client_id
     );
-
 
     log_info(
         "Refreshing Twitch access token..."
     );
 
-
-    result = http_post(
-        TWITCH_AUTH_HOST,
-        TWITCH_TOKEN_PATH,
-        L"Content-Type: application/x-www-form-urlencoded\r\n",
-        body,
-        &response
-    );
-
+    result =
+        http_post(
+            TWITCH_AUTH_HOST,
+            TWITCH_TOKEN_PATH,
+            L"Content-Type: application/x-www-form-urlencoded\r\n",
+            body,
+            &response
+        );
 
     if (result != BOT_OK)
     {
@@ -192,10 +157,8 @@ BotResult twitch_refresh_access_token(
             &response
         );
 
-
         return result;
     }
-
 
     if (response.body == NULL)
     {
@@ -203,16 +166,13 @@ BotResult twitch_refresh_access_token(
             &response
         );
 
-
         return BOT_ERR_JSON;
     }
-
 
     root =
         cJSON_Parse(
             response.body
         );
-
 
     if (root == NULL)
     {
@@ -220,15 +180,12 @@ BotResult twitch_refresh_access_token(
             "Failed to parse Twitch refresh response"
         );
 
-
         http_response_free(
             &response
         );
 
-
         return BOT_ERR_JSON;
     }
-
 
     if (response.status_code != 200)
     {
@@ -237,7 +194,6 @@ BotResult twitch_refresh_access_token(
                 root,
                 "message"
             );
-
 
         if (cJSON_IsString(
                 message_json))
@@ -255,20 +211,11 @@ BotResult twitch_refresh_access_token(
             );
         }
 
-
-        cJSON_Delete(
-            root
-        );
-
-
-        http_response_free(
-            &response
-        );
-
+        cJSON_Delete(root);
+        http_response_free(&response);
 
         return BOT_ERR_AUTH;
     }
-
 
     access_token_json =
         cJSON_GetObjectItemCaseSensitive(
@@ -276,20 +223,17 @@ BotResult twitch_refresh_access_token(
             "access_token"
         );
 
-
     refresh_token_json =
         cJSON_GetObjectItemCaseSensitive(
             root,
             "refresh_token"
         );
 
-
     expires_in_json =
         cJSON_GetObjectItemCaseSensitive(
             root,
             "expires_in"
         );
-
 
     if (!cJSON_IsString(
             access_token_json) ||
@@ -302,59 +246,35 @@ BotResult twitch_refresh_access_token(
             "Invalid Twitch refresh response"
         );
 
-
-        cJSON_Delete(
-            root
-        );
-
-
-        http_response_free(
-            &response
-        );
-
+        cJSON_Delete(root);
+        http_response_free(&response);
 
         return BOT_ERR_JSON;
     }
 
-
     snprintf(
         new_token->access_token,
-        sizeof(
-            new_token->access_token
-        ),
+        sizeof(new_token->access_token),
         "%s",
         access_token_json->valuestring
     );
 
-
     snprintf(
         new_token->refresh_token,
-        sizeof(
-            new_token->refresh_token
-        ),
+        sizeof(new_token->refresh_token),
         "%s",
         refresh_token_json->valuestring
     );
 
-
     new_token->expires_in =
         expires_in_json->valueint;
 
-
-    cJSON_Delete(
-        root
-    );
-
-
-    http_response_free(
-        &response
-    );
-
+    cJSON_Delete(root);
+    http_response_free(&response);
 
     log_info(
         "Twitch access token refreshed successfully"
     );
-
 
     return BOT_OK;
 }
