@@ -495,6 +495,21 @@ int chat_command_parse(
         command->type =
             CHAT_COMMAND_DAILY;
     }
+    else if (
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "топ"
+        ) ||
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "top"
+        ))
+    {
+        command->type =
+            CHAT_COMMAND_TOP;
+    }
 
 
     /*
@@ -747,7 +762,7 @@ int chat_command_build_response(
                 snprintf(
                     buffer,
                     buffer_size,
-					"Команды: !баланс, !ежедневка, !тг, !дс, !монетка <ставка>, !кости, !шар <вопрос>, !слот <ставка>, !дуэль @ник <ставка>"
+					"Команды: !баланс, !топ, !ежедневка, !тг, !дс, !монетка <ставка>, !кости, !шар <вопрос>, !слот <ставка>, !дуэль @ник <ставка>"
                 );
 
 
