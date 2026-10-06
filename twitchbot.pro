@@ -65,4 +65,4 @@ win32-msvc* {
 DISTFILES += \
     config.ini
 
-VERSION = 0.7.1.0
+VERSION = 0.7.2.0
