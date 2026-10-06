@@ -21,6 +21,9 @@ typedef struct
 
     long long balance;
 
+    /* Unix-время последнего получения ежедневной награды. */
+    long long last_daily;
+
 } ViewerProfile;
 
 
