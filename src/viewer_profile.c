@@ -189,7 +189,7 @@ int viewer_profile_save(void)
      */
     fprintf(
         file,
-        "TWITCHBOT_VIEWERS_V1\n"
+        "TWITCHBOT_VIEWERS_V2\n"
     );
 
 
@@ -218,11 +218,12 @@ int viewer_profile_save(void)
         if (
             fprintf(
                 file,
-                "%s|%s|%s|%lld\n",
+                "%s|%s|%s|%lld|%lld\n",
                 profile.user_id,
                 profile.login,
                 profile.display_name,
-                profile.balance
+                profile.balance,
+                profile.last_daily
             ) < 0)
         {
             fclose(file);
@@ -293,6 +294,8 @@ int viewer_profile_init(void)
     ];
 
     long long balance;
+    long long last_daily;
+    int file_version;
 
 
     memset(
@@ -343,9 +346,22 @@ int viewer_profile_init(void)
     if (
         strncmp(
             line,
+            "TWITCHBOT_VIEWERS_V2",
+            20
+        ) == 0)
+    {
+        file_version = 2;
+    }
+    else if (
+        strncmp(
+            line,
             "TWITCHBOT_VIEWERS_V1",
             20
-        ) != 0)
+        ) == 0)
+    {
+        file_version = 1;
+    }
+    else
     {
         fclose(file);
         return 0;
@@ -371,19 +387,41 @@ int viewer_profile_init(void)
         login[0] = '\0';
         display_name[0] = '\0';
         balance = 0;
+        last_daily = 0;
 
 
-        if (
-            sscanf(
-                line,
-                "%63[^|]|%63[^|]|%127[^|]|%lld",
-                user_id,
-                login,
-                display_name,
-                &balance
-            ) != 4)
+        if (file_version == 2)
         {
-            continue;
+            if (
+                sscanf(
+                    line,
+                    "%63[^|]|%63[^|]|%127[^|]|%lld|%lld",
+                    user_id,
+                    login,
+                    display_name,
+                    &balance,
+                    &last_daily
+                ) != 5)
+            {
+                continue;
+            }
+        }
+        else
+        {
+            if (
+                sscanf(
+                    line,
+                    "%63[^|]|%63[^|]|%127[^|]|%lld",
+                    user_id,
+                    login,
+                    display_name,
+                    &balance
+                ) != 4)
+            {
+                continue;
+            }
+
+            last_daily = 0;
         }
 
 
@@ -430,6 +468,11 @@ int viewer_profile_init(void)
             g_profile_count
         ].balance =
             balance;
+
+        g_profiles[
+            g_profile_count
+        ].last_daily =
+            last_daily;
 
 
         ++g_profile_count;
