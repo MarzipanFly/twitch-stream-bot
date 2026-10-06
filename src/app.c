@@ -2115,6 +2115,20 @@ static BotResult process_twitch_chat_notification(
             );
         }
     }
+    else if (command.type == CHAT_COMMAND_TOP)
+    {
+        if (!viewer_profile_build_top(
+                5,
+                response,
+                sizeof(response)))
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Не удалось сформировать рейтинг."
+            );
+        }
+    }
     else if (command.type == CHAT_COMMAND_DAILY)
     {
         time_t now;
