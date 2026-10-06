@@ -22,6 +22,7 @@
 #include "token_store.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <windows.h>
@@ -1826,6 +1827,82 @@ static BotResult connect_twitch_chat_listener(
 
 /*
  * ============================================================
+ * ECONOMY HELPERS
+ * ============================================================
+ */
+static int parse_orange_bet(
+    const char *arguments,
+    long long *bet
+)
+{
+    char *end;
+    long long value;
+
+    if (arguments == NULL || bet == NULL)
+    {
+        return 0;
+    }
+
+    while (*arguments == ' ' || *arguments == '\t')
+    {
+        ++arguments;
+    }
+
+    if (*arguments == '\0')
+    {
+        return 0;
+    }
+
+    value = strtoll(
+        arguments,
+        &end,
+        10
+    );
+
+    if (end == arguments)
+    {
+        return 0;
+    }
+
+    while (*end == ' ' || *end == '\t')
+    {
+        ++end;
+    }
+
+    if (
+        *end != '\0' ||
+        value < 1 ||
+        value > 10000)
+    {
+        return 0;
+    }
+
+    *bet = value;
+
+    return 1;
+}
+
+
+static void economy_random_init(void)
+{
+    static int initialized = 0;
+
+    if (initialized)
+    {
+        return;
+    }
+
+    srand(
+        (unsigned int)time(NULL) ^
+        (unsigned int)GetTickCount()
+    );
+
+    initialized = 1;
+}
+
+
+/*
+ * ============================================================
  * PROCESS TWITCH CHAT MESSAGE
  * ============================================================
  */
@@ -2016,6 +2093,221 @@ static BotResult process_twitch_chat_notification(
                         profile->balance
                     );
                 }
+            }
+        }
+    }
+    else if (command.type == CHAT_COMMAND_COIN)
+    {
+        long long bet;
+
+        if (profile == NULL)
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Не удалось загрузить профиль."
+            );
+        }
+        else if (!parse_orange_bet(command.arguments, &bet))
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Использование: !монетка <ставка 1-10000>"
+            );
+        }
+        else if (bet > profile->balance)
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "%s, не хватает апельсинов. Баланс: %lld.",
+                profile->display_name,
+                profile->balance
+            );
+        }
+        else
+        {
+            long long old_balance = profile->balance;
+            int win;
+
+            economy_random_init();
+            win = rand() % 2 == 0;
+
+            if (win)
+            {
+                profile->balance += bet;
+            }
+            else
+            {
+                profile->balance -= bet;
+            }
+
+            if (!viewer_profile_save())
+            {
+                profile->balance = old_balance;
+
+                snprintf(
+                    response,
+                    sizeof(response),
+                    "%s, не удалось сохранить результат игры.",
+                    profile->display_name
+                );
+            }
+            else if (win)
+            {
+                snprintf(
+                    response,
+                    sizeof(response),
+                    "Монетка: орёл! %s выигрывает %lld апельсинов. Баланс: %lld.",
+                    profile->display_name,
+                    bet,
+                    profile->balance
+                );
+            }
+            else
+            {
+                snprintf(
+                    response,
+                    sizeof(response),
+                    "Монетка: решка! %s проигрывает %lld апельсинов. Баланс: %lld.",
+                    profile->display_name,
+                    bet,
+                    profile->balance
+                );
+            }
+        }
+    }
+    else if (command.type == CHAT_COMMAND_SLOT)
+    {
+        static const char *symbols[] =
+        {
+            "7",
+            "BAR",
+            "АПЕЛЬСИН",
+            "ВИШНЯ",
+            "ЗВЕЗДА"
+        };
+
+        long long bet;
+
+        if (profile == NULL)
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Не удалось загрузить профиль."
+            );
+        }
+        else if (!parse_orange_bet(command.arguments, &bet))
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Использование: !слот <ставка 1-10000>"
+            );
+        }
+        else if (bet > profile->balance)
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "%s, не хватает апельсинов. Баланс: %lld.",
+                profile->display_name,
+                profile->balance
+            );
+        }
+        else
+        {
+            int first;
+            int second;
+            int third;
+            int triple;
+            int pair;
+            long long old_balance = profile->balance;
+
+            economy_random_init();
+
+            first = rand() % 5;
+            second = rand() % 5;
+            third = rand() % 5;
+
+            triple =
+                first == second &&
+                second == third;
+
+            pair =
+                !triple &&
+                (
+                    first == second ||
+                    first == third ||
+                    second == third
+                );
+
+            if (triple)
+            {
+                /*
+                 * Выплата 10x означает чистый выигрыш 9 ставок:
+                 * сама поставленная сумма также возвращается игроку.
+                 */
+                profile->balance += bet * 9;
+            }
+            else if (!pair)
+            {
+                profile->balance -= bet;
+            }
+
+            if (
+                profile->balance != old_balance &&
+                !viewer_profile_save())
+            {
+                profile->balance = old_balance;
+
+                snprintf(
+                    response,
+                    sizeof(response),
+                    "%s, не удалось сохранить результат игры.",
+                    profile->display_name
+                );
+            }
+            else if (triple)
+            {
+                snprintf(
+                    response,
+                    sizeof(response),
+                    "[%s] [%s] [%s] ДЖЕКПОТ x10! %s выигрывает %lld апельсинов. Баланс: %lld.",
+                    symbols[first],
+                    symbols[second],
+                    symbols[third],
+                    profile->display_name,
+                    bet * 9,
+                    profile->balance
+                );
+            }
+            else if (pair)
+            {
+                snprintf(
+                    response,
+                    sizeof(response),
+                    "[%s] [%s] [%s] Пара! Ставка возвращена. Баланс: %lld.",
+                    symbols[first],
+                    symbols[second],
+                    symbols[third],
+                    profile->balance
+                );
+            }
+            else
+            {
+                snprintf(
+                    response,
+                    sizeof(response),
+                    "[%s] [%s] [%s] Мимо! Потеряно %lld апельсинов. Баланс: %lld.",
+                    symbols[first],
+                    symbols[second],
+                    symbols[third],
+                    bet,
+                    profile->balance
+                );
             }
         }
     }
