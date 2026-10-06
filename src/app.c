@@ -4,6 +4,7 @@
 #include "config.h"
 #include "bot_result.h"
 #include "commands.h"
+#include "command_cooldown.h"
 #include "platform.h"
 #include "telegram_api.h"
 #include "http_client.h"
@@ -791,10 +792,10 @@ static int build_stream_started_message(
             buffer,
             buffer_size,
 
-            "🔴 Стрим начался!\n\n"
-            "🎮 %s\n"
-            "📝 %s\n\n"
-            "🍊 Залетай на стрим:\n"
+            "? Стрим начался!\n\n"
+            "? %s\n"
+            "? %s\n\n"
+            "? Залетай на стрим:\n"
             "https://twitch.tv/%s",
 
             game,
@@ -1137,6 +1138,7 @@ static void run_chat_test_console(
             chat_command_build_response(
                 &command,
                 config->telegram.channel_url,
+				config->discord.invite_url,
                 response,
                 sizeof(response)
             ))
@@ -1312,6 +1314,7 @@ static void run_eventsub_chat_test(
         !chat_command_build_response(
             &command,
             config->telegram.channel_url,
+			config->discord.invite_url,
             response,
             sizeof(response)
         ))
@@ -1668,6 +1671,7 @@ static BotResult run_real_twitch_command_test(
             !chat_command_build_response(
                 &command,
                 config->telegram.channel_url,
+				config->discord.invite_url,
                 response,
                 sizeof(response)
             ))
@@ -1862,9 +1866,29 @@ static BotResult process_twitch_chat_notification(
         return BOT_OK;
     }
 
+	/*
+	 * Неизвестные команды не участвуют
+	 * в систему кулдаунов
+	 */
+	if (command.type != CHAT_COMMAND_UNKNOWN &&
+		!command_cooldown_try_use(
+			chat_message.chatter_user_id,
+			command.type))
+	{
+		log_debug(
+			"Command cooldown: %s (%s) %s",
+			chat_message.chatter_user_name,
+			chat_message.chatter_user_id,
+			chat_message.text
+		);
+
+		return BOT_OK;
+	}
+
     if (!chat_command_build_response(
             &command,
             config->telegram.channel_url,
+			config->discord.invite_url,
             response,
             sizeof(response)))
     {
@@ -2363,6 +2387,7 @@ int app_run(
 
     setup_console_utf8();
 
+	command_cooldown_init();
 
     /*
      * ========================================================
@@ -2916,7 +2941,7 @@ int app_run(
         command_options.test_twitch_chat)
     {
         const char *test_message =
-            "🍊 TwitchBot подключён к чату. Тестовое сообщение.";
+            "? TwitchBot подключён к чату. Тестовое сообщение.";
 
 
         log_info(

@@ -420,6 +420,26 @@ int chat_command_parse(
         command->type =
             CHAT_COMMAND_TELEGRAM;
     }
+	else if (
+		chat_command_name_equals(
+			name_start,
+			name_length,
+			"дискорд"
+		) ||
+		chat_command_name_equals(
+			name_start,
+			name_length,
+			"дс"
+		) ||
+		chat_command_name_equals(
+			name_start,
+			name_length,
+			"ds"
+		))
+	{
+		command->type =
+			CHAT_COMMAND_DISCORD;
+	}
     else if (
         chat_command_name_equals(
             name_start,
@@ -542,6 +562,7 @@ int chat_command_parse(
 int chat_command_build_response(
     const ChatCommand *command,
     const char *telegram_url,
+	const char *discord_url,
     char *buffer,
     size_t buffer_size
 )
@@ -599,6 +620,41 @@ int chat_command_build_response(
                     buffer_size
                 );
 
+			/*
+			 * ====================================================
+			 * !дс
+			 * ====================================================
+			 */
+			case CHAT_COMMAND_DISCORD:
+
+				if (
+					discord_url == NULL ||
+					discord_url[0] == '\0')
+				{
+					written =
+						snprintf(
+							buffer,
+							buffer_size,
+							"Discord пока не настроен."
+						);
+				}
+				else
+				{
+					written =
+						snprintf(
+							buffer,
+							buffer_size,
+							"Наш Discord: %s",
+							discord_url
+						);
+				}
+
+
+				return
+					chat_response_is_valid(
+						written,
+						buffer_size
+					);
 
         /*
          * ====================================================
@@ -611,7 +667,7 @@ int chat_command_build_response(
                 snprintf(
                     buffer,
                     buffer_size,
-                    "Команды: !тг, !монетка, !кости, !шар <вопрос>, !слот"
+					"Команды: !тг, !дс, !монетка, !кости, !шар <вопрос>, !слот"
                 );
 
 

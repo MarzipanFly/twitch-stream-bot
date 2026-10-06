@@ -53,6 +53,7 @@ typedef enum
     CHAT_COMMAND_NONE = 0,
 
     CHAT_COMMAND_TELEGRAM,
+	CHAT_COMMAND_DISCORD,
     CHAT_COMMAND_HELP,
 
     CHAT_COMMAND_COIN,
@@ -108,6 +109,7 @@ int chat_command_parse(
 int chat_command_build_response(
     const ChatCommand *command,
     const char *telegram_url,
+	const char *discord_url,
     char *buffer,
     size_t buffer_size
 );

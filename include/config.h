@@ -55,7 +55,10 @@ typedef struct
 
 } TelegramConfig;
 
-
+typedef struct
+{
+	char invite_url[CONFIG_STRING_SIZE];
+} DiscordConfig;
 typedef struct
 {
     char command_prefix;
@@ -67,6 +70,7 @@ typedef struct
 {
     TwitchConfig twitch;
     TelegramConfig telegram;
+	DiscordConfig discord;
     BotConfig bot;
 
 } AppConfig;

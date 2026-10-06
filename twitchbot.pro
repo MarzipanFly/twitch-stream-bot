@@ -11,6 +11,7 @@ INCLUDEPATH += \
 SOURCES += \
     src/app.c \
     src/bot_result.c \
+    src/command_cooldown.c \
     src/commands.c \
     src/config.c \
     src/http_client.c \
@@ -31,6 +32,7 @@ SOURCES += \
 HEADERS += \
     include/app.h \
     include/bot_result.h \
+    include/command_cooldown.h \
     include/commands.h \
     include/config.h \
     include/http_client.h \
@@ -61,4 +63,4 @@ win32-msvc* {
 DISTFILES += \
     config.ini
 
-VERSION = 0.6.0.0
+VERSION = 0.6.2.0

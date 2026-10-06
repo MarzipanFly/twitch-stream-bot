@@ -11,6 +11,7 @@ typedef enum
     SECTION_NONE = 0,
     SECTION_TWITCH,
     SECTION_TELEGRAM,
+	SECTION_DISCORD,
     SECTION_BOT
 
 } ConfigSection;
@@ -79,6 +80,11 @@ static ConfigSection parse_section(
     {
         return SECTION_TELEGRAM;
     }
+
+	if (strcmp(line, "[discord]") == 0)
+	{
+		return SECTION_DISCORD;
+	}
 
     if (strcmp(line, "[bot]") == 0)
     {
@@ -226,6 +232,18 @@ static void parse_key_value(
             }
 
             break;
+
+		case SECTION_DISCORD:
+	{
+		if (strcmp(key, "invite_url") == 0)
+		{
+			copy_string(
+					config->discord.invite_url,
+					sizeof (config->discord.invite_url),
+					value
+			);
+		}
+	}
 
 
         case SECTION_BOT:
