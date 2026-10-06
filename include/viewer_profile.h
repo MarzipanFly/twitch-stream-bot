@@ -72,4 +72,20 @@ ViewerProfile *viewer_profile_get_or_create(
 size_t viewer_profile_count(void);
 
 
+/*
+ * Формирует текстовый рейтинг зрителей по балансу.
+ *
+ * limit задаёт максимальное количество мест в рейтинге.
+ *
+ * Возвращает:
+ * 1 - рейтинг сформирован;
+ * 0 - ошибка.
+ */
+int viewer_profile_build_top(
+    size_t limit,
+    char *buffer,
+    size_t buffer_size
+);
+
+
 #endif
