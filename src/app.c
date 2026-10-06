@@ -23,6 +23,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <windows.h>
 
 
@@ -1927,6 +1928,95 @@ static BotResult process_twitch_chat_notification(
                 profile->display_name,
                 profile->balance
             );
+        }
+    }
+    else if (command.type == CHAT_COMMAND_DAILY)
+    {
+        time_t now;
+        long long elapsed;
+        long long remaining;
+        const long long daily_interval = 24LL * 60LL * 60LL;
+
+        if (profile == NULL)
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Не удалось загрузить профиль."
+            );
+        }
+        else
+        {
+            now = time(NULL);
+            elapsed = (long long)now - profile->last_daily;
+
+            if (
+                profile->last_daily != 0 &&
+                elapsed < daily_interval)
+            {
+                long long hours;
+                long long minutes;
+
+                remaining = daily_interval - elapsed;
+
+                /*
+                 * Округляем оставшееся время вверх до минуты,
+                 * чтобы не показывать 0 ч 0 мин за несколько секунд
+                 * до следующей награды.
+                 */
+                minutes = (remaining + 59) / 60;
+                hours = minutes / 60;
+                minutes %= 60;
+
+                snprintf(
+                    response,
+                    sizeof(response),
+                    "%s, ежедневка уже получена. Следующая через %lld ч %lld мин.",
+                    profile->display_name,
+                    hours,
+                    minutes
+                );
+            }
+            else
+            {
+                const long long reward = 75;
+                long long old_balance;
+                long long old_last_daily;
+
+                old_balance = profile->balance;
+                old_last_daily = profile->last_daily;
+
+                profile->balance += reward;
+                profile->last_daily = (long long)now;
+
+                if (!viewer_profile_save())
+                {
+                    /*
+                     * Если запись на диск не удалась, возвращаем профиль
+                     * в прежнее состояние.
+                     */
+                    profile->balance = old_balance;
+                    profile->last_daily = old_last_daily;
+
+                    snprintf(
+                        response,
+                        sizeof(response),
+                        "%s, не удалось сохранить ежедневную награду.",
+                        profile->display_name
+                    );
+                }
+                else
+                {
+                    snprintf(
+                        response,
+                        sizeof(response),
+                        "%s получает %lld апельсинов! Баланс: %lld апельсинов.",
+                        profile->display_name,
+                        reward,
+                        profile->balance
+                    );
+                }
+            }
         }
     }
     else if (!chat_command_build_response(
