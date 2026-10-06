@@ -625,3 +625,136 @@ size_t viewer_profile_count(void)
 {
     return g_profile_count;
 }
+
+
+int viewer_profile_build_top(
+    size_t limit,
+    char *buffer,
+    size_t buffer_size
+)
+{
+    size_t indices[VIEWER_PROFILE_MAX_USERS];
+    size_t count;
+    size_t i;
+    size_t j;
+    size_t used;
+
+    if (
+        buffer == NULL ||
+        buffer_size == 0 ||
+        limit == 0)
+    {
+        return 0;
+    }
+
+    buffer[0] = '\0';
+
+    count = g_profile_count;
+
+    if (count == 0)
+    {
+        snprintf(
+            buffer,
+            buffer_size,
+            "Рейтинг пока пуст."
+        );
+
+        return 1;
+    }
+
+    for (i = 0; i < count; ++i)
+    {
+        indices[i] = i;
+    }
+
+    /*
+     * Профилей максимум 1024, а рейтинг запрашивается редко,
+     * поэтому для текущего масштаба достаточно простой сортировки
+     * индексов без изменения порядка самих профилей.
+     */
+    for (i = 0; i < count; ++i)
+    {
+        size_t best = i;
+
+        for (j = i + 1; j < count; ++j)
+        {
+            ViewerProfile *candidate =
+                &g_profiles[indices[j]];
+
+            ViewerProfile *current =
+                &g_profiles[indices[best]];
+
+            if (
+                candidate->balance > current->balance ||
+                (
+                    candidate->balance == current->balance &&
+                    strcmp(
+                        candidate->display_name,
+                        current->display_name
+                    ) < 0
+                ))
+            {
+                best = j;
+            }
+        }
+
+        if (best != i)
+        {
+            size_t temporary = indices[i];
+
+            indices[i] = indices[best];
+            indices[best] = temporary;
+        }
+    }
+
+    if (limit > count)
+    {
+        limit = count;
+    }
+
+    used = (size_t)snprintf(
+        buffer,
+        buffer_size,
+        "Топ апельсинов: "
+    );
+
+    if (used >= buffer_size)
+    {
+        buffer[buffer_size - 1] = '\0';
+        return 1;
+    }
+
+    for (i = 0; i < limit; ++i)
+    {
+        ViewerProfile *profile =
+            &g_profiles[indices[i]];
+
+        int written =
+            snprintf(
+                buffer + used,
+                buffer_size - used,
+                "%s%u. %s — %lld",
+                i == 0 ? "" : " | ",
+                (unsigned int)(i + 1),
+                profile->display_name[0] != '\0'
+                    ? profile->display_name
+                    : profile->login,
+                profile->balance
+            );
+
+        if (written < 0)
+        {
+            return 0;
+        }
+
+        if ((size_t)written >= buffer_size - used)
+        {
+            buffer[buffer_size - 1] = '\0';
+            break;
+        }
+
+        used += (size_t)written;
+    }
+
+    return 1;
+}
