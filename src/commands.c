@@ -460,6 +460,26 @@ int chat_command_parse(
         command->type =
             CHAT_COMMAND_HELP;
     }
+    else if (
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "баланс"
+        ) ||
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "апельсины"
+        ) ||
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "balance"
+        ))
+    {
+        command->type =
+            CHAT_COMMAND_BALANCE;
+    }
 
 
     /*

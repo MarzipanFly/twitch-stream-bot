@@ -35,13 +35,14 @@ static DWORD get_cooldown_ms(
 		case CHAT_COMMAND_TELEGRAM:
 		case CHAT_COMMAND_DISCORD:
 		case CHAT_COMMAND_HELP:
+        case CHAT_COMMAND_BALANCE:
 			return 10UL * 1000UL;
 
 		case CHAT_COMMAND_COIN:
 		case CHAT_COMMAND_DICE:
 		case CHAT_COMMAND_EIGHT_BALL:
 		case CHAT_COMMAND_SLOT:
-			return 5UL * 1000UL;
+            return 5UL * 1000UL;
 
 		default:
 			return 0;

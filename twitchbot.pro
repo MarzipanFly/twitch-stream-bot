@@ -27,6 +27,7 @@ SOURCES += \
     src/twitch_eventsub_ws.c \
     src/twitch_refresh.c \
     src/twitch_stream.c \
+    src/viewer_profile.c \
     third_party/cjson/cJSON.c
 
 HEADERS += \
@@ -48,6 +49,7 @@ HEADERS += \
     include/twitch_refresh.h \
     include/twitch_stream.h \
     include/twitch_user.h \
+    include/viewer_profile.h \
     third_party/cjson/cJSON.h
 
 win32-g++ {
@@ -63,4 +65,4 @@ win32-msvc* {
 DISTFILES += \
     config.ini
 
-VERSION = 0.6.2.0
+VERSION = 0.7.0.0

@@ -1,5 +1,6 @@
 #include "app.h"
 
+#include "viewer_profile.h"
 #include "logger.h"
 #include "config.h"
 #include "bot_result.h"
@@ -1138,7 +1139,7 @@ static void run_chat_test_console(
             chat_command_build_response(
                 &command,
                 config->telegram.channel_url,
-				config->discord.invite_url,
+                config->discord.invite_url,
                 response,
                 sizeof(response)
             ))
@@ -1314,7 +1315,7 @@ static void run_eventsub_chat_test(
         !chat_command_build_response(
             &command,
             config->telegram.channel_url,
-			config->discord.invite_url,
+            config->discord.invite_url,
             response,
             sizeof(response)
         ))
@@ -1671,7 +1672,7 @@ static BotResult run_real_twitch_command_test(
             !chat_command_build_response(
                 &command,
                 config->telegram.channel_url,
-				config->discord.invite_url,
+                config->discord.invite_url,
                 response,
                 sizeof(response)
             ))
@@ -1834,6 +1835,7 @@ static BotResult process_twitch_chat_notification(
 {
     TwitchChatMessage chat_message;
     ChatCommand command;
+    ViewerProfile *profile;
     BotResult result;
     char response[2048];
 
@@ -1866,29 +1868,71 @@ static BotResult process_twitch_chat_notification(
         return BOT_OK;
     }
 
-	/*
-	 * Неизвестные команды не участвуют
-	 * в систему кулдаунов
-	 */
-	if (command.type != CHAT_COMMAND_UNKNOWN &&
-		!command_cooldown_try_use(
-			chat_message.chatter_user_id,
-			command.type))
-	{
-		log_debug(
-			"Command cooldown: %s (%s) %s",
-			chat_message.chatter_user_name,
-			chat_message.chatter_user_id,
-			chat_message.text
-		);
+    profile =
+        viewer_profile_get_or_create(
+            chat_message.chatter_user_id,
+            chat_message.chatter_user_login,
+            chat_message.chatter_user_name
+        );
 
-		return BOT_OK;
-	}
 
-    if (!chat_command_build_response(
+    if (profile == NULL)
+    {
+        log_warning(
+            "Failed to load or create viewer profile: %s (%s)",
+            chat_message.chatter_user_name,
+            chat_message.chatter_user_id
+        );
+    }
+
+    /*
+     * Неизвестные команды не участвуют
+     * в систему кулдаунов
+     */
+    if (command.type != CHAT_COMMAND_UNKNOWN &&
+        !command_cooldown_try_use(
+            chat_message.chatter_user_id,
+            command.type))
+    {
+        log_debug(
+            "Command cooldown: %s (%s) %s",
+            chat_message.chatter_user_name,
+            chat_message.chatter_user_id,
+            chat_message.text
+        );
+
+        return BOT_OK;
+    }
+
+    /*
+     * Баланс зависит от конкретного Twitch-пользователя,
+     * поэтому ответ формируется здесь, а не в commands.c.
+     */
+    if (command.type == CHAT_COMMAND_BALANCE)
+    {
+        if (profile == NULL)
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Не удалось загрузить профиль."
+            );
+        }
+        else
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "%s, у тебя %lld апельсинов.",
+                profile->display_name,
+                profile->balance
+            );
+        }
+    }
+    else if (!chat_command_build_response(
             &command,
             config->telegram.channel_url,
-			config->discord.invite_url,
+            config->discord.invite_url,
             response,
             sizeof(response)))
     {
@@ -2387,7 +2431,7 @@ int app_run(
 
     setup_console_utf8();
 
-	command_cooldown_init();
+    command_cooldown_init();
 
     /*
      * ========================================================
@@ -2525,6 +2569,29 @@ int app_run(
 
     log_debug(
         "Application directories initialized"
+    );
+
+
+    /*
+     * ========================================================
+     * VIEWER PROFILES
+     * ========================================================
+     */
+    if (!viewer_profile_init())
+    {
+        log_error(
+            "Failed to initialize viewer profiles"
+        );
+
+        logger_shutdown();
+
+        return 1;
+    }
+
+
+    log_info(
+        "Viewer profiles loaded: %u",
+        (unsigned int)viewer_profile_count()
     );
 
 
