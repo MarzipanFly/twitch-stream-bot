@@ -578,6 +578,51 @@ int chat_command_parse(
         command->type =
             CHAT_COMMAND_SLOT;
     }
+    else if (
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "дуэль"
+        ) ||
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "duel"
+        ))
+    {
+        command->type =
+            CHAT_COMMAND_DUEL;
+    }
+    else if (
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "принять"
+        ) ||
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "accept"
+        ))
+    {
+        command->type =
+            CHAT_COMMAND_ACCEPT;
+    }
+    else if (
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "отказ"
+        ) ||
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "decline"
+        ))
+    {
+        command->type =
+            CHAT_COMMAND_DECLINE;
+    }
     else
     {
         command->type =
@@ -702,7 +747,7 @@ int chat_command_build_response(
                 snprintf(
                     buffer,
                     buffer_size,
-					"Команды: !баланс, !ежедневка, !тг, !дс, !монетка <ставка>, !кости, !шар <вопрос>, !слот <ставка>"
+					"Команды: !баланс, !ежедневка, !тг, !дс, !монетка <ставка>, !кости, !шар <вопрос>, !слот <ставка>, !дуэль @ник <ставка>"
                 );
 
 
