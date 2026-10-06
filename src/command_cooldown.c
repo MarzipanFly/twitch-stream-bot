@@ -43,6 +43,9 @@ static DWORD get_cooldown_ms(
 		case CHAT_COMMAND_DICE:
 		case CHAT_COMMAND_EIGHT_BALL:
 		case CHAT_COMMAND_SLOT:
+		case CHAT_COMMAND_DUEL:
+		case CHAT_COMMAND_ACCEPT:
+		case CHAT_COMMAND_DECLINE:
             return 5UL * 1000UL;
 
 		default:
