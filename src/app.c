@@ -1,6 +1,7 @@
 #include "app.h"
 
 #include "viewer_profile.h"
+#include "viewer_duel.h"
 #include "logger.h"
 #include "config.h"
 #include "bot_result.h"
@@ -1901,6 +1902,113 @@ static void economy_random_init(void)
 }
 
 
+static int parse_duel_arguments(
+    const char *arguments,
+    char *target_login,
+    size_t target_login_size,
+    long long *bet
+)
+{
+    const char *start;
+    const char *end;
+    size_t length;
+
+    if (
+        arguments == NULL ||
+        target_login == NULL ||
+        target_login_size == 0 ||
+        bet == NULL)
+    {
+        return 0;
+    }
+
+    start = arguments;
+
+    while (*start == ' ' || *start == '\t')
+    {
+        ++start;
+    }
+
+    if (*start == '@')
+    {
+        ++start;
+    }
+
+    end = start;
+
+    while (
+        *end != '\0' &&
+        *end != ' ' &&
+        *end != '\t')
+    {
+        ++end;
+    }
+
+    length = (size_t)(end - start);
+
+    if (
+        length == 0 ||
+        length >= target_login_size)
+    {
+        return 0;
+    }
+
+    memcpy(
+        target_login,
+        start,
+        length
+    );
+
+    target_login[length] = '\0';
+
+    return parse_orange_bet(
+        end,
+        bet
+    );
+}
+
+
+static int ascii_equals_ignore_case(
+    const char *left,
+    const char *right
+)
+{
+    unsigned char a;
+    unsigned char b;
+
+    if (left == NULL || right == NULL)
+    {
+        return 0;
+    }
+
+    while (*left != '\0' && *right != '\0')
+    {
+        a = (unsigned char)*left;
+        b = (unsigned char)*right;
+
+        if (a >= 'A' && a <= 'Z')
+        {
+            a = (unsigned char)(a - 'A' + 'a');
+        }
+
+        if (b >= 'A' && b <= 'Z')
+        {
+            b = (unsigned char)(b - 'A' + 'a');
+        }
+
+        if (a != b)
+        {
+            return 0;
+        }
+
+        ++left;
+        ++right;
+    }
+
+    return *left == '\0' && *right == '\0';
+}
+
+
 /*
  * ============================================================
  * PROCESS TWITCH CHAT MESSAGE
@@ -2309,6 +2417,247 @@ static BotResult process_twitch_chat_notification(
                     profile->balance
                 );
             }
+        }
+    }
+    else if (command.type == CHAT_COMMAND_DUEL)
+    {
+        char target_login[VIEWER_PROFILE_LOGIN_SIZE];
+        long long bet;
+
+        if (profile == NULL)
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Не удалось загрузить профиль."
+            );
+        }
+        else if (!parse_duel_arguments(
+                    command.arguments,
+                    target_login,
+                    sizeof(target_login),
+                    &bet))
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Использование: !дуэль @ник <ставка 1-10000>"
+            );
+        }
+        else if (
+            ascii_equals_ignore_case(
+                target_login,
+                chat_message.chatter_user_login
+            ))
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "%s, нельзя вызвать на дуэль самого себя.",
+                profile->display_name
+            );
+        }
+        else if (bet > profile->balance)
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "%s, не хватает апельсинов. Баланс: %lld.",
+                profile->display_name,
+                profile->balance
+            );
+        }
+        else if (!viewer_duel_create(
+                    chat_message.chatter_user_id,
+                    profile->display_name,
+                    target_login,
+                    bet))
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Не удалось создать дуэль: у одного из участников уже есть активный вызов."
+            );
+        }
+        else
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "%s вызывает @%s на дуэль за %lld апельсинов! @%s: !принять или !отказ. Вызов действует 60 сек.",
+                profile->display_name,
+                target_login,
+                bet,
+                target_login
+            );
+        }
+    }
+    else if (command.type == CHAT_COMMAND_ACCEPT)
+    {
+        char challenger_user_id[VIEWER_PROFILE_ID_SIZE];
+        char challenger_name[VIEWER_PROFILE_NAME_SIZE];
+        long long bet;
+
+        if (profile == NULL)
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Не удалось загрузить профиль."
+            );
+        }
+        else if (!viewer_duel_accept(
+                    chat_message.chatter_user_id,
+                    chat_message.chatter_user_login,
+                    profile->display_name,
+                    challenger_user_id,
+                    sizeof(challenger_user_id),
+                    challenger_name,
+                    sizeof(challenger_name),
+                    &bet))
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "%s, активного вызова на дуэль нет.",
+                profile->display_name
+            );
+        }
+        else
+        {
+            ViewerProfile *challenger =
+                viewer_profile_find(
+                    challenger_user_id
+                );
+
+            if (challenger == NULL)
+            {
+                snprintf(
+                    response,
+                    sizeof(response),
+                    "Профиль соперника не найден. Дуэль отменена."
+                );
+            }
+            else if (
+                challenger->balance < bet ||
+                profile->balance < bet)
+            {
+                snprintf(
+                    response,
+                    sizeof(response),
+                    "Дуэль отменена: у одного из участников уже не хватает %lld апельсинов.",
+                    bet
+                );
+            }
+            else
+            {
+                long long challenger_old_balance =
+                    challenger->balance;
+
+                long long target_old_balance =
+                    profile->balance;
+
+                int challenger_wins;
+
+                economy_random_init();
+
+                challenger_wins =
+                    rand() % 2 == 0;
+
+                if (challenger_wins)
+                {
+                    challenger->balance += bet;
+                    profile->balance -= bet;
+                }
+                else
+                {
+                    challenger->balance -= bet;
+                    profile->balance += bet;
+                }
+
+                if (!viewer_profile_save())
+                {
+                    challenger->balance =
+                        challenger_old_balance;
+
+                    profile->balance =
+                        target_old_balance;
+
+                    snprintf(
+                        response,
+                        sizeof(response),
+                        "Не удалось сохранить результат дуэли."
+                    );
+                }
+                else if (challenger_wins)
+                {
+                    snprintf(
+                        response,
+                        sizeof(response),
+                        "%s побеждает %s в дуэли и забирает %lld апельсинов! Балансы: %s %lld, %s %lld.",
+                        challenger->display_name,
+                        profile->display_name,
+                        bet,
+                        challenger->display_name,
+                        challenger->balance,
+                        profile->display_name,
+                        profile->balance
+                    );
+                }
+                else
+                {
+                    snprintf(
+                        response,
+                        sizeof(response),
+                        "%s побеждает %s в дуэли и забирает %lld апельсинов! Балансы: %s %lld, %s %lld.",
+                        profile->display_name,
+                        challenger->display_name,
+                        bet,
+                        profile->display_name,
+                        profile->balance,
+                        challenger->display_name,
+                        challenger->balance
+                    );
+                }
+            }
+        }
+    }
+    else if (command.type == CHAT_COMMAND_DECLINE)
+    {
+        char challenger_name[VIEWER_PROFILE_NAME_SIZE];
+        long long bet;
+
+        if (profile == NULL)
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Не удалось загрузить профиль."
+            );
+        }
+        else if (!viewer_duel_decline(
+                    chat_message.chatter_user_login,
+                    challenger_name,
+                    sizeof(challenger_name),
+                    &bet))
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "%s, активного вызова на дуэль нет.",
+                profile->display_name
+            );
+        }
+        else
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "%s отказался от дуэли с %s за %lld апельсинов.",
+                profile->display_name,
+                challenger_name,
+                bet
+            );
         }
     }
     else if (!chat_command_build_response(
@@ -2814,6 +3163,7 @@ int app_run(
     setup_console_utf8();
 
     command_cooldown_init();
+    viewer_duel_init();
 
     /*
      * ========================================================
