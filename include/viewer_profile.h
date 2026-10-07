@@ -24,6 +24,17 @@ typedef struct
     /* Unix-время последнего получения ежедневной награды. */
     long long last_daily;
 
+    /* Долгосрочная статистика профиля. */
+    long long created_at;
+    long long daily_count;
+    long long coin_wins;
+    long long coin_losses;
+    long long slot_jackpots;
+    long long slot_pairs;
+    long long slot_losses;
+    long long duel_wins;
+    long long duel_losses;
+
 } ViewerProfile;
 
 
