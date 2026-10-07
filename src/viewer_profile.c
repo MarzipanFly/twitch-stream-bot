@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <windows.h>
 
 
@@ -189,7 +190,7 @@ int viewer_profile_save(void)
      */
     fprintf(
         file,
-        "TWITCHBOT_VIEWERS_V2\n"
+        "TWITCHBOT_VIEWERS_V3\n"
     );
 
 
@@ -218,12 +219,21 @@ int viewer_profile_save(void)
         if (
             fprintf(
                 file,
-                "%s|%s|%s|%lld|%lld\n",
+                "%s|%s|%s|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld\n",
                 profile.user_id,
                 profile.login,
                 profile.display_name,
                 profile.balance,
-                profile.last_daily
+                profile.last_daily,
+                profile.created_at,
+                profile.daily_count,
+                profile.coin_wins,
+                profile.coin_losses,
+                profile.slot_jackpots,
+                profile.slot_pairs,
+                profile.slot_losses,
+                profile.duel_wins,
+                profile.duel_losses
             ) < 0)
         {
             fclose(file);
@@ -295,6 +305,15 @@ int viewer_profile_init(void)
 
     long long balance;
     long long last_daily;
+    long long created_at;
+    long long daily_count;
+    long long coin_wins;
+    long long coin_losses;
+    long long slot_jackpots;
+    long long slot_pairs;
+    long long slot_losses;
+    long long duel_wins;
+    long long duel_losses;
     int file_version;
 
 
@@ -346,6 +365,15 @@ int viewer_profile_init(void)
     if (
         strncmp(
             line,
+            "TWITCHBOT_VIEWERS_V3",
+            20
+        ) == 0)
+    {
+        file_version = 3;
+    }
+    else if (
+        strncmp(
+            line,
             "TWITCHBOT_VIEWERS_V2",
             20
         ) == 0)
@@ -388,9 +416,43 @@ int viewer_profile_init(void)
         display_name[0] = '\0';
         balance = 0;
         last_daily = 0;
+        created_at = 0;
+        daily_count = 0;
+        coin_wins = 0;
+        coin_losses = 0;
+        slot_jackpots = 0;
+        slot_pairs = 0;
+        slot_losses = 0;
+        duel_wins = 0;
+        duel_losses = 0;
 
 
-        if (file_version == 2)
+        if (file_version == 3)
+        {
+            if (
+                sscanf(
+                    line,
+                    "%63[^|]|%63[^|]|%127[^|]|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld",
+                    user_id,
+                    login,
+                    display_name,
+                    &balance,
+                    &last_daily,
+                    &created_at,
+                    &daily_count,
+                    &coin_wins,
+                    &coin_losses,
+                    &slot_jackpots,
+                    &slot_pairs,
+                    &slot_losses,
+                    &duel_wins,
+                    &duel_losses
+                ) != 14)
+            {
+                continue;
+            }
+        }
+        else if (file_version == 2)
         {
             if (
                 sscanf(
@@ -469,10 +531,26 @@ int viewer_profile_init(void)
         ].balance =
             balance;
 
-        g_profiles[
-            g_profile_count
-        ].last_daily =
-            last_daily;
+        g_profiles[g_profile_count].last_daily = last_daily;
+        g_profiles[g_profile_count].created_at = created_at;
+        g_profiles[g_profile_count].daily_count = daily_count;
+        g_profiles[g_profile_count].coin_wins = coin_wins;
+        g_profiles[g_profile_count].coin_losses = coin_losses;
+        g_profiles[g_profile_count].slot_jackpots = slot_jackpots;
+        g_profiles[g_profile_count].slot_pairs = slot_pairs;
+        g_profiles[g_profile_count].slot_losses = slot_losses;
+        g_profiles[g_profile_count].duel_wins = duel_wins;
+        g_profiles[g_profile_count].duel_losses = duel_losses;
+
+        /*
+         * Старые V1/V2 не содержали дату создания профиля.
+         * При миграции фиксируем момент первого запуска V3.
+         */
+        if (g_profiles[g_profile_count].created_at == 0)
+        {
+            g_profiles[g_profile_count].created_at =
+                (long long)time(NULL);
+        }
 
 
         ++g_profile_count;
@@ -589,6 +667,9 @@ ViewerProfile *viewer_profile_get_or_create(
 
     profile->balance =
         VIEWER_PROFILE_START_BALANCE;
+
+    profile->created_at =
+        (long long)time(NULL);
 
 
     ++g_profile_count;
