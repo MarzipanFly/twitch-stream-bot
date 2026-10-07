@@ -2115,6 +2115,50 @@ static BotResult process_twitch_chat_notification(
             );
         }
     }
+    else if (command.type == CHAT_COMMAND_PROFILE)
+    {
+        if (profile == NULL)
+        {
+            snprintf(
+                response,
+                sizeof(response),
+                "Не удалось загрузить профиль."
+            );
+        }
+        else
+        {
+            long long days_with_channel = 0;
+
+            if (profile->created_at > 0)
+            {
+                time_t now = time(NULL);
+
+                if ((long long)now > profile->created_at)
+                {
+                    days_with_channel =
+                        ((long long)now - profile->created_at) /
+                        (24LL * 60LL * 60LL);
+                }
+            }
+
+            snprintf(
+                response,
+                sizeof(response),
+                "%s | %lld апельсинов | с нами %lld дн. | ежедневок: %lld | монетка: %lld/%lld | слот: джекпот %lld, пары %lld, проигрыши %lld | дуэли: %lld/%lld",
+                profile->display_name,
+                profile->balance,
+                days_with_channel,
+                profile->daily_count,
+                profile->coin_wins,
+                profile->coin_losses,
+                profile->slot_jackpots,
+                profile->slot_pairs,
+                profile->slot_losses,
+                profile->duel_wins,
+                profile->duel_losses
+            );
+        }
+    }
     else if (command.type == CHAT_COMMAND_TOP)
     {
         if (!viewer_profile_build_top(
@@ -2181,12 +2225,15 @@ static BotResult process_twitch_chat_notification(
                 const long long reward = 75;
                 long long old_balance;
                 long long old_last_daily;
+                long long old_daily_count;
 
                 old_balance = profile->balance;
                 old_last_daily = profile->last_daily;
+                old_daily_count = profile->daily_count;
 
                 profile->balance += reward;
                 profile->last_daily = (long long)now;
+                profile->daily_count += 1;
 
                 if (!viewer_profile_save())
                 {
@@ -2196,6 +2243,7 @@ static BotResult process_twitch_chat_notification(
                      */
                     profile->balance = old_balance;
                     profile->last_daily = old_last_daily;
+                    profile->daily_count = old_daily_count;
 
                     snprintf(
                         response,
@@ -2251,6 +2299,8 @@ static BotResult process_twitch_chat_notification(
         else
         {
             long long old_balance = profile->balance;
+            long long old_coin_wins = profile->coin_wins;
+            long long old_coin_losses = profile->coin_losses;
             int win;
 
             economy_random_init();
@@ -2259,15 +2309,19 @@ static BotResult process_twitch_chat_notification(
             if (win)
             {
                 profile->balance += bet;
+                profile->coin_wins += 1;
             }
             else
             {
                 profile->balance -= bet;
+                profile->coin_losses += 1;
             }
 
             if (!viewer_profile_save())
             {
                 profile->balance = old_balance;
+                profile->coin_wins = old_coin_wins;
+                profile->coin_losses = old_coin_losses;
 
                 snprintf(
                     response,
@@ -2347,6 +2401,9 @@ static BotResult process_twitch_chat_notification(
             int triple;
             int pair;
             long long old_balance = profile->balance;
+            long long old_slot_jackpots = profile->slot_jackpots;
+            long long old_slot_pairs = profile->slot_pairs;
+            long long old_slot_losses = profile->slot_losses;
 
             economy_random_init();
 
@@ -2373,17 +2430,24 @@ static BotResult process_twitch_chat_notification(
                  * сама поставленная сумма также возвращается игроку.
                  */
                 profile->balance += bet * 9;
+                profile->slot_jackpots += 1;
             }
-            else if (!pair)
+            else if (pair)
+            {
+                profile->slot_pairs += 1;
+            }
+            else
             {
                 profile->balance -= bet;
+                profile->slot_losses += 1;
             }
 
-            if (
-                profile->balance != old_balance &&
-                !viewer_profile_save())
+            if (!viewer_profile_save())
             {
                 profile->balance = old_balance;
+                profile->slot_jackpots = old_slot_jackpots;
+                profile->slot_pairs = old_slot_pairs;
+                profile->slot_losses = old_slot_losses;
 
                 snprintf(
                     response,
@@ -2571,6 +2635,15 @@ static BotResult process_twitch_chat_notification(
                 long long target_old_balance =
                     profile->balance;
 
+                long long challenger_old_wins =
+                    challenger->duel_wins;
+                long long challenger_old_losses =
+                    challenger->duel_losses;
+                long long target_old_wins =
+                    profile->duel_wins;
+                long long target_old_losses =
+                    profile->duel_losses;
+
                 int challenger_wins;
 
                 economy_random_init();
@@ -2582,11 +2655,15 @@ static BotResult process_twitch_chat_notification(
                 {
                     challenger->balance += bet;
                     profile->balance -= bet;
+                    challenger->duel_wins += 1;
+                    profile->duel_losses += 1;
                 }
                 else
                 {
                     challenger->balance -= bet;
                     profile->balance += bet;
+                    challenger->duel_losses += 1;
+                    profile->duel_wins += 1;
                 }
 
                 if (!viewer_profile_save())
@@ -2596,6 +2673,15 @@ static BotResult process_twitch_chat_notification(
 
                     profile->balance =
                         target_old_balance;
+
+                    challenger->duel_wins =
+                        challenger_old_wins;
+                    challenger->duel_losses =
+                        challenger_old_losses;
+                    profile->duel_wins =
+                        target_old_wins;
+                    profile->duel_losses =
+                        target_old_losses;
 
                     snprintf(
                         response,
