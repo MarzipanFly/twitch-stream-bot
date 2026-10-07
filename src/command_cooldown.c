@@ -38,6 +38,7 @@ static DWORD get_cooldown_ms(
         case CHAT_COMMAND_BALANCE:
 		case CHAT_COMMAND_DAILY:
         case CHAT_COMMAND_TOP:
+        case CHAT_COMMAND_PROFILE:
 			return 10UL * 1000UL;
 
 		case CHAT_COMMAND_COIN:
