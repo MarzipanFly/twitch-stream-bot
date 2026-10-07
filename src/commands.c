@@ -510,6 +510,26 @@ int chat_command_parse(
         command->type =
             CHAT_COMMAND_TOP;
     }
+    else if (
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "я"
+        ) ||
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "профиль"
+        ) ||
+        chat_command_name_equals(
+            name_start,
+            name_length,
+            "profile"
+        ))
+    {
+        command->type =
+            CHAT_COMMAND_PROFILE;
+    }
 
 
     /*
@@ -762,7 +782,7 @@ int chat_command_build_response(
                 snprintf(
                     buffer,
                     buffer_size,
-					"Команды: !баланс, !топ, !ежедневка, !тг, !дс, !монетка <ставка>, !кости, !шар <вопрос>, !слот <ставка>, !дуэль @ник <ставка>"
+					"Команды: !я, !баланс, !топ, !ежедневка, !тг, !дс, !монетка <ставка>, !кости, !шар <вопрос>, !слот <ставка>, !дуэль @ник <ставка>"
                 );
 
 
