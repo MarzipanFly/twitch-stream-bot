@@ -38,6 +38,8 @@
 
 static DWORD g_last_bruh_tick = 0;
 static int g_bruh_played = 0;
+static DWORD g_sound_last_tick[SOUND_MAX_COUNT];
+static int g_sound_played[SOUND_MAX_COUNT];
 
 
 /*
@@ -2053,6 +2055,55 @@ static BotResult process_twitch_chat_notification(
         chat_message.chatter_user_name,
         chat_message.text
     );
+
+    /*
+     * Configurable sound commands are checked before built-in commands.
+     * Each sound has its own global cooldown.
+     */
+    if (chat_message.text[0] == config->bot.command_prefix)
+    {
+        const char *name = chat_message.text + 1;
+        size_t i;
+        for (i = 0; i < config->sound_count; ++i)
+        {
+            const SoundConfig *sound = &config->sounds[i];
+            size_t length = strlen(sound->command);
+            if (strncmp(name, sound->command, length) != 0 ||
+                (name[length] != '\0' && name[length] != ' ' &&
+                 name[length] != '\t'))
+                continue;
+
+            if (!config->obs.enabled)
+            {
+                log_warning("Sound command ignored: OBS disabled");
+                return BOT_OK;
+            }
+            {
+                DWORD now = GetTickCount();
+                DWORD cooldown = sound->cooldown_seconds * 1000UL;
+                ObsWebSocket obs = {0};
+                if (g_sound_played[i] &&
+                    (DWORD)(now - g_sound_last_tick[i]) < cooldown)
+                    return BOT_OK;
+
+                result = obs_websocket_connect(&obs, config->obs.password);
+                if (result == BOT_OK)
+                    result = obs_websocket_restart_media(&obs, sound->input);
+                obs_websocket_close(&obs);
+                if (result == BOT_OK)
+                {
+                    g_sound_last_tick[i] = GetTickCount();
+                    g_sound_played[i] = 1;
+                    log_info("OBS sound !%s played by %s",
+                             sound->command, chat_message.chatter_user_name);
+                }
+                else
+                    log_warning("OBS sound !%s failed (result=%d)",
+                                sound->command, (int)result);
+            }
+            return BOT_OK;
+        }
+    }
 
     if (!chat_command_parse(
             chat_message.text,
