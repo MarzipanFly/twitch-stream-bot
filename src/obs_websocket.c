@@ -241,3 +241,134 @@ fail:
     obs_websocket_close(client);
     return result;
 }
+
+/*
+ * Synchronous OBS WebSocket v5 requests.
+ * Call from one thread at a time; no event subscriptions are requested.
+ */
+BotResult obs_websocket_request(ObsWebSocket *client, const char *request_type,
+                                const char *request_data_json,
+                                char *response, size_t response_size)
+{
+    static unsigned long request_sequence = 0;
+    char id[40];
+    cJSON *packet = NULL, *body = NULL, *data = NULL, *reply = NULL;
+    const cJSON *op, *d, *status, *success, *response_data, *returned_id;
+    char *encoded = NULL;
+    BotResult result = BOT_ERR_JSON;
+
+    if (!client || !client->authenticated || !client->websocket ||
+        !request_type || !response || response_size == 0)
+        return BOT_ERR_CONFIG;
+    response[0] = '\0';
+    snprintf(id, sizeof(id), "twitchbot-%lu", ++request_sequence);
+    packet = cJSON_CreateObject();
+    body = cJSON_CreateObject();
+    if (!packet || !body) goto cleanup;
+    cJSON_AddNumberToObject(packet, "op", 6);
+    cJSON_AddItemToObject(packet, "d", body);
+    cJSON_AddStringToObject(body, "requestType", request_type);
+    cJSON_AddStringToObject(body, "requestId", id);
+    if (request_data_json && request_data_json[0])
+    {
+        data = cJSON_Parse(request_data_json);
+        if (!cJSON_IsObject(data)) goto cleanup;
+        cJSON_AddItemToObject(body, "requestData", data);
+        data = NULL;
+    }
+    result = send_json(client, packet);
+    if (result != BOT_OK) goto cleanup;
+    result = receive_json(client, &reply);
+    if (result != BOT_OK) goto cleanup;
+    op = cJSON_GetObjectItemCaseSensitive(reply, "op");
+    d = cJSON_GetObjectItemCaseSensitive(reply, "d");
+    returned_id = cJSON_GetObjectItemCaseSensitive(d, "requestId");
+    status = cJSON_GetObjectItemCaseSensitive(d, "requestStatus");
+    success = cJSON_GetObjectItemCaseSensitive(status, "result");
+    if (!cJSON_IsNumber(op) || op->valueint != 7 ||
+        !cJSON_IsString(returned_id) || strcmp(returned_id->valuestring, id) ||
+        !cJSON_IsTrue(success))
+    {
+        log_warning("OBS request failed: %s", request_type);
+        result = BOT_ERR_NETWORK;
+        goto cleanup;
+    }
+    response_data = cJSON_GetObjectItemCaseSensitive(d, "responseData");
+    if (response_data)
+    {
+        encoded = cJSON_PrintUnformatted(response_data);
+        if (!encoded || strlen(encoded) >= response_size)
+        {
+            result = BOT_ERR_JSON;
+            goto cleanup;
+        }
+        strcpy(response, encoded);
+    }
+    result = BOT_OK;
+cleanup:
+    cJSON_Delete(packet);
+    cJSON_Delete(data);
+    cJSON_Delete(reply);
+    if (encoded) free(encoded);
+    return result;
+}
+
+BotResult obs_websocket_get_version(ObsWebSocket *client, char *response, size_t size)
+{
+    return obs_websocket_request(client, "GetVersion", NULL, response, size);
+}
+
+BotResult obs_websocket_get_scene(ObsWebSocket *client, char *response, size_t size)
+{
+    return obs_websocket_request(client, "GetCurrentProgramScene", NULL, response, size);
+}
+
+BotResult obs_websocket_set_scene(ObsWebSocket *client, const char *scene_name)
+{
+    cJSON *data = cJSON_CreateObject();
+    char *json;
+    char response[64];
+    BotResult result;
+    if (!scene_name || !data) { cJSON_Delete(data); return BOT_ERR_CONFIG; }
+    cJSON_AddStringToObject(data, "sceneName", scene_name);
+    json = cJSON_PrintUnformatted(data);
+    cJSON_Delete(data);
+    if (!json) return BOT_ERR_JSON;
+    result = obs_websocket_request(client, "SetCurrentProgramScene", json, response, sizeof(response));
+    free(json);
+    return result;
+}
+
+BotResult obs_websocket_restart_media(ObsWebSocket *client, const char *input_name)
+{
+    cJSON *data = cJSON_CreateObject();
+    char *json;
+    char response[64];
+    BotResult result;
+    if (!input_name || !data) { cJSON_Delete(data); return BOT_ERR_CONFIG; }
+    cJSON_AddStringToObject(data, "inputName", input_name);
+    cJSON_AddStringToObject(data, "mediaAction", "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART");
+    json = cJSON_PrintUnformatted(data);
+    cJSON_Delete(data);
+    if (!json) return BOT_ERR_JSON;
+    result = obs_websocket_request(client, "TriggerMediaInputAction", json, response, sizeof(response));
+    free(json);
+    return result;
+}
+
+BotResult obs_websocket_set_input_mute(ObsWebSocket *client, const char *input_name, int muted)
+{
+    cJSON *data = cJSON_CreateObject();
+    char *json;
+    char response[64];
+    BotResult result;
+    if (!input_name || !data) { cJSON_Delete(data); return BOT_ERR_CONFIG; }
+    cJSON_AddStringToObject(data, "inputName", input_name);
+    cJSON_AddBoolToObject(data, "inputMuted", muted != 0);
+    json = cJSON_PrintUnformatted(data);
+    cJSON_Delete(data);
+    if (!json) return BOT_ERR_JSON;
+    result = obs_websocket_request(client, "SetInputMute", json, response, sizeof(response));
+    free(json);
+    return result;
+}
