@@ -2154,6 +2154,49 @@ static BotResult process_twitch_chat_notification(
         return BOT_OK;
     }
 
+    if (command.type == CHAT_COMMAND_SOUNDS)
+    {
+        size_t i;
+        size_t used = 0;
+        int n;
+
+        if (config->sound_count == 0)
+        {
+            snprintf(response, sizeof(response), "Звуковые эффекты пока не настроены.");
+        }
+        else
+        {
+            n = snprintf(response, sizeof(response), "Звуки:");
+            if (n < 0 || (size_t)n >= sizeof(response))
+                return BOT_OK;
+            used = (size_t)n;
+            for (i = 0; i < config->sound_count; ++i)
+            {
+                const SoundConfig *sound = &config->sounds[i];
+                n = snprintf(response + used, sizeof(response) - used,
+                             "%s!%s — %s",
+                             i == 0 ? " " : " | ",
+                             sound->command,
+                             sound->cost == 0 ? "бесплатно" : "");
+                if (n < 0 || (size_t)n >= sizeof(response) - used)
+                    break;
+                used += (size_t)n;
+                if (sound->cost > 0)
+                {
+                    n = snprintf(response + used, sizeof(response) - used,
+                                 "%lld апельсинов", sound->cost);
+                    if (n < 0 || (size_t)n >= sizeof(response) - used)
+                        break;
+                    used += (size_t)n;
+                }
+            }
+        }
+        result = twitch_chat_send_message(&config->twitch, response);
+        if (result != BOT_OK)
+            log_warning("Failed to send !звуки catalog (result=%d)", (int)result);
+        return BOT_OK;
+    }
+
     profile =
         viewer_profile_get_or_create(
             chat_message.chatter_user_id,
