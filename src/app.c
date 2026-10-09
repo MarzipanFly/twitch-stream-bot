@@ -22,6 +22,8 @@
 #include "twitch_eventsub_ws.h"
 #include "chat_event.h"
 #include "viewer_rank.h"
+#include "music_library.h"
+#include "music_queue.h"
 
 #include "token_store.h"
 
@@ -43,6 +45,35 @@ static int g_sound_played[SOUND_MAX_COUNT];
 static DWORD g_sound_notice_tick[SOUND_MAX_COUNT];
 static int g_sound_notice_sent[SOUND_MAX_COUNT];
 #define SOUND_NOTICE_INTERVAL_MS 10000UL
+/* 0.9: request queue, playback integration follows in a later step. */
+static MusicLibrary g_music_library;
+static MusicQueue g_music_queue;
+static int g_music_initialized = 0;
+
+static void music_ensure_initialized(void)
+{
+    if (g_music_initialized)
+        return;
+    music_queue_init(&g_music_queue);
+    if (!music_library_load(&g_music_library, "music"))
+        log_warning("Music directory not found: music");
+    else
+        log_info("Music library: %u MP3 tracks", (unsigned)g_music_library.count);
+    g_music_initialized = 1;
+}
+
+static int music_request_matches(const char *text, char prefix)
+{
+    const char *name = "заказать";
+    size_t length = strlen(name);
+    if (text == NULL || text[0] != prefix)
+        return 0;
+    ++text;
+    return strncmp(text, name, length) == 0 &&
+           (text[length] == '\0' || text[length] == ' ' ||
+            text[length] == '\t');
+}
+
 
 
 /*
@@ -2169,6 +2200,69 @@ static BotResult process_twitch_chat_notification(
             }
             return BOT_OK;
         }
+    }
+
+    if (music_request_matches(chat_message.text, config->bot.command_prefix))
+    {
+        const char *argument = chat_message.text + 1 + strlen("заказать");
+        char track_id[MUSIC_TRACK_ID_SIZE];
+        size_t length;
+        const MusicLibraryEntry *entry;
+        size_t i;
+        int duplicate = 0;
+        while (*argument == ' ' || *argument == '\t')
+            ++argument;
+        length = strlen(argument);
+        while (length > 0 &&
+               (argument[length - 1] == ' ' ||
+                argument[length - 1] == '\t' ||
+                argument[length - 1] == '\r' ||
+                argument[length - 1] == '\n'))
+            --length;
+        music_ensure_initialized();
+        if (length == 0 || length >= sizeof(track_id))
+            snprintf(response, sizeof(response),
+                     "Использование: !заказать название_трека");
+        else
+        {
+            memcpy(track_id, argument, length);
+            track_id[length] = '\0';
+            entry = music_library_find(&g_music_library, track_id);
+            if (entry == NULL)
+                snprintf(response, sizeof(response),
+                         "Трек '%s' не найден в папке music.", track_id);
+            else
+            {
+                for (i = 0; i < g_music_queue.count; ++i)
+                    if (_stricmp(g_music_queue.tracks[i].track_id, entry->id) == 0)
+                    {
+                        duplicate = 1;
+                        break;
+                    }
+                if (duplicate)
+                    snprintf(response, sizeof(response),
+                             "Трек '%s' уже находится в очереди.", entry->id);
+                else if (!music_queue_push(&g_music_queue, entry->id,
+                                           chat_message.chatter_user_name))
+                    snprintf(response, sizeof(response),
+                             "Очередь заполнена (максимум %d треков).",
+                             MUSIC_QUEUE_CAPACITY);
+                else
+                {
+                    snprintf(response, sizeof(response),
+                             "%s добавил '%s' в очередь. Позиция: %u. "
+                             "Воспроизведение пока не включено.",
+                             chat_message.chatter_user_name, entry->id,
+                             (unsigned)music_queue_size(&g_music_queue));
+                    log_info("Music request: %s by %s",
+                             entry->id, chat_message.chatter_user_name);
+                }
+            }
+        }
+        result = twitch_chat_send_message(&config->twitch, response);
+        if (result != BOT_OK)
+            log_warning("Music request response failed (result=%d)", (int)result);
+        return BOT_OK;
     }
 
     if (!chat_command_parse(
