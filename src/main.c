@@ -11,6 +11,46 @@
 /* Local OBS diagnostic, independent of Twitch and Internet. */
 int main(int argc, char *argv[])
 {
+    if (argc == 3 && strcmp(argv[1], "--test-obs-music") == 0)
+    {
+        AppConfig config;
+        ObsWebSocket client = {0};
+        BotResult result;
+        char path[MAX_PATH];
+        char absolute[MAX_PATH];
+        DWORD attributes;
+        if (config_load("config.ini", &config) != BOT_OK)
+        {
+            fprintf(stderr, "Cannot read config.ini\n");
+            return 1;
+        }
+        if (!CreateDirectoryA("music_cache", NULL))
+        {
+            attributes = GetFileAttributesA("music_cache");
+            if (attributes == INVALID_FILE_ATTRIBUTES ||
+                !(attributes & FILE_ATTRIBUTE_DIRECTORY))
+                return 1;
+        }
+        if (!music_audio_prepare(argv[2], "music_cache", path, sizeof(path)) ||
+            !GetFullPathNameA(path, sizeof(absolute), absolute, NULL))
+        {
+            fprintf(stderr, "Audio preparation failed.\n");
+            return 1;
+        }
+        result = obs_websocket_connect(&client, config.obs.password);
+        if (result == BOT_OK)
+            result = obs_websocket_set_media_file(&client, "Bot_Music", absolute);
+        if (result == BOT_OK)
+            result = obs_websocket_restart_media(&client, "Bot_Music");
+        obs_websocket_close(&client);
+        if (result != BOT_OK)
+        {
+            fprintf(stderr, "OBS music playback failed (%d).\n", (int)result);
+            return 1;
+        }
+        printf("OBS Bot_Music playing: %s\n", absolute);
+        return 0;
+    }
     if (argc == 3 && strcmp(argv[1], "--test-music") == 0)
     {
         char path[MAX_PATH];
