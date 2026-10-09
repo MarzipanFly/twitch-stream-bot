@@ -23,6 +23,7 @@
 #include "chat_event.h"
 #include "viewer_rank.h"
 #include "music_queue.h"
+#include "music_worker.h"
 #include "youtube_metadata.h"
 
 #include "token_store.h"
@@ -47,6 +48,10 @@ static int g_sound_notice_sent[SOUND_MAX_COUNT];
 #define SOUND_NOTICE_INTERVAL_MS 10000UL
 /* 0.9: request queue, playback integration follows in a later step. */
 static MusicQueue g_music_queue;
+static MusicWorker g_music_worker;
+static int g_music_worker_active = 0;
+static int g_music_playback_started = 0;
+
 
 static int youtube_video_id(const char *url, char id[12])
 {
@@ -3697,6 +3702,80 @@ static BotResult run_bot_loop(
                             "Failed to process Twitch chat message: %s",
                             bot_result_to_string(chat_result)
                         );
+                    }
+                }
+            }
+        }
+
+        /*
+         * Music 0.9: start one background download and play the first
+         * queued request. Automatic next-track handling comes later.
+         */
+        if (config->obs.enabled && !g_music_playback_started)
+        {
+            if (!g_music_worker_active && g_music_queue.count > 0)
+            {
+                MusicTrack next;
+                if (music_queue_peek(&g_music_queue, &next) &&
+                    music_worker_start(&g_music_worker, next.track_id))
+                {
+                    g_music_worker_active = 1;
+                    log_info("Music download started: %s", next.track_id);
+                }
+                else
+                    log_warning("Could not start music download worker");
+            }
+            if (g_music_worker_active)
+            {
+                char relative_path[MAX_PATH];
+                int state = music_worker_status(&g_music_worker,
+                                                relative_path,
+                                                sizeof(relative_path));
+                if (state == 2 || state == -1)
+                {
+                    MusicTrack finished;
+                    music_worker_close(&g_music_worker);
+                    g_music_worker_active = 0;
+                    if (state == 2)
+                    {
+                        char absolute_path[MAX_PATH];
+                        ObsWebSocket obs = {0};
+                        BotResult playback_result = BOT_ERR_CONFIG;
+                        DWORD length = GetFullPathNameA(relative_path,
+                                        sizeof(absolute_path),
+                                        absolute_path, NULL);
+                        if (length > 0 && length < sizeof(absolute_path))
+                        {
+                            playback_result = obs_websocket_connect(
+                                &obs, config->obs.password);
+                            if (playback_result == BOT_OK)
+                                playback_result = obs_websocket_set_media_file(
+                                    &obs, "Bot_Music", absolute_path);
+                            if (playback_result == BOT_OK)
+                                playback_result = obs_websocket_restart_media(
+                                    &obs, "Bot_Music");
+                            obs_websocket_close(&obs);
+                        }
+                        if (playback_result == BOT_OK)
+                        {
+                            music_queue_pop(&g_music_queue, &finished);
+                            g_music_playback_started = 1;
+                            log_info("Music playing in OBS: %s (requested by %s)",
+                                     finished.track_id, finished.requester);
+                        }
+                        else
+                        {
+                            log_warning("OBS music playback failed (%d); "
+                                        "request stays in queue", (int)playback_result);
+                            /* Do not retry endlessly every keepalive. */
+                            g_music_playback_started = 1;
+                        }
+                    }
+                    else
+                    {
+                        if (music_queue_pop(&g_music_queue, &finished))
+                            log_warning("Music download failed: %s",
+                                        finished.track_id);
                     }
                 }
             }
