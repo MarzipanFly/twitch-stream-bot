@@ -68,10 +68,17 @@ typedef struct
 
 typedef struct
 {
+    int enabled;
+    char password[CONFIG_STRING_SIZE];
+} ObsConfig;
+
+typedef struct
+{
     TwitchConfig twitch;
     TelegramConfig telegram;
 	DiscordConfig discord;
     BotConfig bot;
+    ObsConfig obs;
 
 } AppConfig;
 
