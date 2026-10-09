@@ -26,7 +26,7 @@ static int valid_id(const char *id)
 int youtube_metadata_fetch(const char *video_id, YouTubeMetadata *metadata)
 {
     char command[512];
-    char output[16384];
+    char output[4096];
     size_t used = 0;
     FILE *pipe;
     cJSON *root;
@@ -40,11 +40,11 @@ int youtube_metadata_fetch(const char *video_id, YouTubeMetadata *metadata)
         return 0;
     memset(metadata, 0, sizeof(*metadata));
 
-    /* yt-dlp emits one JSON line. Timeouts/retries bound network waiting. */
+    /* yt-dlp emits only title and duration as compact JSON. */
     snprintf(command, sizeof(command),
              "yt-dlp.exe --no-playlist --skip-download "
              "--no-warnings --socket-timeout 8 --retries 1 "
-             "--extractor-retries 1 --dump-single-json "
+             "--extractor-retries 1 --print \"%%(title,duration)j\" "
              "\"https://www.youtube.com/watch?v=%s\" 2>NUL",
              video_id);
     pipe = _popen(command, "r");
