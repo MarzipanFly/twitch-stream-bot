@@ -40,6 +40,9 @@ static DWORD g_last_bruh_tick = 0;
 static int g_bruh_played = 0;
 static DWORD g_sound_last_tick[SOUND_MAX_COUNT];
 static int g_sound_played[SOUND_MAX_COUNT];
+static DWORD g_sound_notice_tick[SOUND_MAX_COUNT];
+static int g_sound_notice_sent[SOUND_MAX_COUNT];
+#define SOUND_NOTICE_INTERVAL_MS 10000UL
 
 
 /*
@@ -2085,7 +2088,29 @@ static BotResult process_twitch_chat_notification(
                 ViewerProfile *sound_profile = NULL;
                 if (g_sound_played[i] &&
                     (DWORD)(now - g_sound_last_tick[i]) < cooldown)
+                {
+                    if (!g_sound_notice_sent[i] ||
+                        (DWORD)(now - g_sound_notice_tick[i]) >=
+                            SOUND_NOTICE_INTERVAL_MS)
+                    {
+                        DWORD elapsed = (DWORD)(now - g_sound_last_tick[i]);
+                        unsigned long remaining =
+                            (unsigned long)((cooldown - elapsed + 999UL) / 1000UL);
+                        snprintf(response, sizeof(response),
+                                 "!%s ещё недоступен. Осталось %lu сек.",
+                                 sound->command, remaining);
+                        result = twitch_chat_send_message(&config->twitch, response);
+                        if (result == BOT_OK)
+                        {
+                            g_sound_notice_tick[i] = now;
+                            g_sound_notice_sent[i] = 1;
+                        }
+                        else
+                            log_warning("Failed to send sound cooldown notice (result=%d)",
+                                        (int)result);
+                    }
                     return BOT_OK;
+                }
 
                 if (sound->cost > 0)
                 {
