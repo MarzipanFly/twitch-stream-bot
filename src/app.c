@@ -23,6 +23,7 @@
 #include "chat_event.h"
 #include "viewer_rank.h"
 #include "music_queue.h"
+#include "youtube_metadata.h"
 
 #include "token_store.h"
 
@@ -2258,38 +2259,75 @@ static BotResult process_twitch_chat_notification(
     {
         const char *argument = chat_message.text + 1 + strlen("заказать");
         char video_id[12];
+        char url[256];
+        size_t length;
         size_t i;
         int duplicate = 0;
+        YouTubeMetadata metadata;
+
         while (*argument == ' ' || *argument == '\t')
             ++argument;
-        if (!youtube_video_id(argument, video_id))
+        length = strlen(argument);
+        while (length > 0 &&
+               (argument[length - 1] == ' ' ||
+                argument[length - 1] == '\t' ||
+                argument[length - 1] == '\r' ||
+                argument[length - 1] == '\n'))
+            --length;
+
+        if (length == 0 || length >= sizeof(url))
             snprintf(response, sizeof(response),
                      "Использование: !заказать ссылка_на_YouTube");
         else
         {
-            for (i = 0; i < g_music_queue.count; ++i)
-                if (strcmp(g_music_queue.tracks[i].track_id, video_id) == 0)
-                {
-                    duplicate = 1;
-                    break;
-                }
-            if (duplicate)
+            memcpy(url, argument, length);
+            url[length] = '\0';
+            if (!youtube_video_id(url, video_id))
                 snprintf(response, sizeof(response),
-                         "Это видео уже находится в очереди.");
-            else if (!music_queue_push(&g_music_queue, video_id,
-                                       chat_message.chatter_user_name))
-                snprintf(response, sizeof(response),
-                         "Очередь заполнена (максимум %d заявок).",
-                         MUSIC_QUEUE_CAPACITY);
+                         "Нужна ссылка на видео YouTube.");
             else
             {
-                snprintf(response, sizeof(response),
-                         "%s, ссылка принята. Позиция: %u. "
-                         "Воспроизведение пока не включено.",
-                         chat_message.chatter_user_name,
-                         (unsigned)music_queue_size(&g_music_queue));
-                log_info("YouTube request: %s by %s",
-                         video_id, chat_message.chatter_user_name);
+                for (i = 0; i < g_music_queue.count; ++i)
+                    if (strcmp(g_music_queue.tracks[i].track_id, video_id) == 0)
+                    {
+                        duplicate = 1;
+                        break;
+                    }
+
+                if (duplicate)
+                    snprintf(response, sizeof(response),
+                             "Это видео уже находится в очереди.");
+                else if (music_queue_size(&g_music_queue) >= MUSIC_QUEUE_CAPACITY)
+                    snprintf(response, sizeof(response),
+                             "Очередь заполнена (максимум %d заявок).",
+                             MUSIC_QUEUE_CAPACITY);
+                else if (!youtube_metadata_fetch(video_id, &metadata))
+                    snprintf(response, sizeof(response),
+                             "Не удалось получить информацию о видео. "
+                             "Проверь yt-dlp и доступность YouTube.");
+                else if (metadata.duration_seconds > 600)
+                    snprintf(response, sizeof(response),
+                             "Видео слишком длинное: %u мин. Максимум 10 мин.",
+                             (metadata.duration_seconds + 59) / 60);
+                else if (!music_queue_push(&g_music_queue, video_id,
+                                           chat_message.chatter_user_name))
+                    snprintf(response, sizeof(response),
+                             "Не удалось добавить видео в очередь.");
+                else
+                {
+                    snprintf(response, sizeof(response),
+                             "%s заказал: %.180s (%u:%02u). "
+                             "Позиция: %u. Воспроизведение пока выключено.",
+                             chat_message.chatter_user_name,
+                             metadata.title,
+                             metadata.duration_seconds / 60,
+                             metadata.duration_seconds % 60,
+                             (unsigned)music_queue_size(&g_music_queue));
+                    log_info("YouTube request: %s (%s), %u seconds, by %s",
+                             video_id, metadata.title,
+                             metadata.duration_seconds,
+                             chat_message.chatter_user_name);
+                }
             }
         }
         result = twitch_chat_send_message(&config->twitch, response);
