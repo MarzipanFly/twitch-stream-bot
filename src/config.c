@@ -260,29 +260,49 @@ static void parse_key_value(
 
         case SECTION_SOUNDS:
         {
-            /* Format: command=OBS_input,seconds; seconds defaults to 15. */
+            /* command=OBS_input,cooldown_seconds,cost; legacy cost=0 */
             SoundConfig *sound;
-            const char *comma = strrchr(value, ',');
-            size_t input_length = comma ? (size_t)(comma - value) : strlen(value);
+            const char *first = strchr(value, ',');
+            const char *second = first ? strchr(first + 1, ',') : NULL;
+            size_t input_length = first ? (size_t)(first - value) : strlen(value);
             unsigned int seconds = 15;
+            long long cost = 0;
             size_t i;
+            char extra;
 
             if (key[0] == '\0' || strlen(key) >= SOUND_NAME_SIZE ||
                 input_length == 0 || input_length >= CONFIG_STRING_SIZE ||
                 config->sound_count >= SOUND_MAX_COUNT)
                 break;
+
             for (i = 0; i < config->sound_count; ++i)
                 if (strcmp(config->sounds[i].command, key) == 0)
                     break;
             if (i < config->sound_count)
                 break;
-            if (comma)
+
+            if (first)
             {
-                char tail;
-                if (sscanf(comma + 1, "%u %c", &seconds, &tail) != 1 ||
-                    seconds > 3600)
+                if (second)
+                {
+                    char cooldown_text[32];
+                    size_t n = (size_t)(second - (first + 1));
+                    if (n == 0 || n >= sizeof(cooldown_text))
+                        break;
+                    memcpy(cooldown_text, first + 1, n);
+                    cooldown_text[n] = '\0';
+                    if (sscanf(cooldown_text, " %u %c", &seconds, &extra) != 1)
+                        break;
+                    if (sscanf(second + 1, " %lld %c", &cost, &extra) != 1 ||
+                        cost < 0 || cost > 1000000000LL)
+                        break;
+                }
+                else if (sscanf(first + 1, " %u %c", &seconds, &extra) != 1)
                     break;
             }
+            if (seconds > 3600)
+                break;
+
             sound = &config->sounds[config->sound_count++];
             copy_string(sound->command, sizeof(sound->command), key);
             memcpy(sound->input, value, input_length);
@@ -290,7 +310,13 @@ static void parse_key_value(
             while (input_length > 0 &&
                    isspace((unsigned char)sound->input[input_length - 1]))
                 sound->input[--input_length] = '\0';
+            if (sound->input[0] == '\0')
+            {
+                --config->sound_count;
+                break;
+            }
             sound->cooldown_seconds = seconds;
+            sound->cost = cost;
             break;
         }
 
