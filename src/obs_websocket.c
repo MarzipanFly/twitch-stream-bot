@@ -109,21 +109,130 @@ static BotResult receive_json(ObsWebSocket *client, cJSON **json)
     return *json != NULL ? BOT_OK : BOT_ERR_JSON;
 }
 
-static BotResult send_json(ObsWebSocket *client, cJSON *json)
+/* Minimal cJSON in this repository only parses; encode JSON locally. */
+static int json_quote(const char *src, char *dst, size_t capacity)
 {
-    char *text = cJSON_PrintUnformatted(json);
-    DWORD error;
+    size_t n = 0;
+    const unsigned char *p = (const unsigned char *)src;
+    if (!src || capacity < 3) return 0;
+    dst[n++] = '"';
+    for (; *p; ++p)
+    {
+        const char *escape = NULL;
+        char unicode[7];
+        size_t len;
+        if (*p == '"' ) escape = "\\\"";
+        else if (*p == '\\') escape = "\\\\";
+        else if (*p == '\n') escape = "\\n";
+        else if (*p == '\r') escape = "\\r";
+        else if (*p == '\t') escape = "\\t";
+        else if (*p < 0x20)
+        {
+            snprintf(unicode, sizeof(unicode), "\\u%04x", (unsigned)*p);
+            escape = unicode;
+        }
+        if (escape)
+        {
+            len = strlen(escape);
+            if (n + len + 2 > capacity) return 0;
+            memcpy(dst + n, escape, len);
+            n += len;
+        }
+        else
+        {
+            if (n + 2 >= capacity) return 0;
+            dst[n++] = (char)*p;
+        }
+    }
+    dst[n++] = '"';
+    dst[n] = '\0';
+    return 1;
+}
+
+static BotResult send_json(ObsWebSocket *client, const char *json)
+{
     ObsSend send = (ObsSend)client->websocket_send;
-    if (text == NULL) return BOT_ERR_JSON;
+    DWORD error;
+    if (!json) return BOT_ERR_JSON;
     error = send(client->websocket, OBS_WS_UTF8_MESSAGE,
-                 text, (DWORD)strlen(text));
-    free(text);
+                 (PVOID)json, (DWORD)strlen(json));
     return error == NO_ERROR ? BOT_OK : BOT_ERR_NETWORK;
+}
+
+/* Serialize parser nodes for responseData; no dependency on upstream cJSON. */
+static int append_json(char *out, size_t capacity, size_t *used, const cJSON *node)
+{
+    const cJSON *child;
+    const char *literal = NULL;
+    char number[64];
+    char quoted[16384];
+    size_t len;
+    int first;
+    if (!node) return 0;
+    if (node->type & cJSON_Object)
+    {
+        if (*used + 2 >= capacity) return 0;
+        out[(*used)++] = '{';
+        first = 1;
+        for (child = node->child; child; child = child->next)
+        {
+            if (!first) { if (*used + 2 >= capacity) return 0; out[(*used)++] = ','; }
+            if (!json_quote(child->string ? child->string : "", quoted, sizeof(quoted))) return 0;
+            len = strlen(quoted);
+            if (*used + len + 2 >= capacity) return 0;
+            memcpy(out + *used, quoted, len); *used += len;
+            out[(*used)++] = ':';
+            if (!append_json(out, capacity, used, child)) return 0;
+            first = 0;
+        }
+        if (*used + 2 > capacity) return 0;
+        out[(*used)++] = '}';
+    }
+    else if (node->type & cJSON_Array)
+    {
+        if (*used + 2 >= capacity) return 0;
+        out[(*used)++] = '[';
+        first = 1;
+        for (child = node->child; child; child = child->next)
+        {
+            if (!first) { if (*used + 2 >= capacity) return 0; out[(*used)++] = ','; }
+            if (!append_json(out, capacity, used, child)) return 0;
+            first = 0;
+        }
+        if (*used + 2 > capacity) return 0;
+        out[(*used)++] = ']';
+    }
+    else if (node->type & cJSON_String)
+    {
+        if (!json_quote(node->valuestring ? node->valuestring : "", quoted, sizeof(quoted))) return 0;
+        literal = quoted;
+    }
+    else if (node->type & cJSON_True) literal = "true";
+    else if (node->type & cJSON_False) literal = "false";
+    else if (node->type & cJSON_NULL) literal = "null";
+    else if (node->type & cJSON_Number)
+    {
+        snprintf(number, sizeof(number), "%.17g", node->valuedouble);
+        literal = number;
+    }
+    else return 0;
+    if (literal)
+    {
+        len = strlen(literal);
+        if (*used + len + 1 > capacity) return 0;
+        memcpy(out + *used, literal, len);
+        *used += len;
+    }
+    out[*used] = '\0';
+    return 1;
 }
 
 static BotResult identify(ObsWebSocket *client, const char *password)
 {
-    cJSON *hello = NULL, *body, *auth, *identified = NULL, *packet = NULL;
+    cJSON *hello = NULL, *identified = NULL;
+    const cJSON *auth;
+    char packet[512];
+    char quoted_auth[160];
     const cJSON *op, *data, *version, *salt, *challenge;
     char response[64] = {0};
     BotResult result = receive_json(client, &hello);
@@ -155,19 +264,22 @@ static BotResult identify(ObsWebSocket *client, const char *password)
         }
     }
 
-    packet = cJSON_CreateObject();
-    body = cJSON_CreateObject();
-    if (packet == NULL || body == NULL)
+    if (auth != NULL)
     {
-        cJSON_Delete(body);
-        result = BOT_ERR_JSON;
-        goto cleanup;
+        if (!json_quote(response, quoted_auth, sizeof(quoted_auth)))
+        {
+            result = BOT_ERR_JSON;
+            goto cleanup;
+        }
+        snprintf(packet, sizeof(packet),
+                 "{\"op\":1,\"d\":{\"rpcVersion\":1,\"eventSubscriptions\":0,\"authentication\":%s}}",
+                 quoted_auth);
     }
-    cJSON_AddNumberToObject(packet, "op", 1);
-    cJSON_AddItemToObject(packet, "d", body);
-    cJSON_AddNumberToObject(body, "rpcVersion", 1);
-    cJSON_AddNumberToObject(body, "eventSubscriptions", 0);
-    if (auth != NULL) cJSON_AddStringToObject(body, "authentication", response);
+    else
+    {
+        snprintf(packet, sizeof(packet),
+                 "{\"op\":1,\"d\":{\"rpcVersion\":1,\"eventSubscriptions\":0}}");
+    }
     result = send_json(client, packet);
     if (result != BOT_OK) goto cleanup;
 
@@ -188,7 +300,6 @@ cleanup:
     SecureZeroMemory(response, sizeof(response));
     cJSON_Delete(hello);
     cJSON_Delete(identified);
-    cJSON_Delete(packet);
     return result;
 }
 
@@ -250,32 +361,38 @@ BotResult obs_websocket_request(ObsWebSocket *client, const char *request_type,
                                 const char *request_data_json,
                                 char *response, size_t response_size)
 {
-    static unsigned long request_sequence = 0;
-    char id[40];
-    cJSON *packet = NULL, *body = NULL, *data = NULL, *reply = NULL;
+    static unsigned long sequence = 0;
+    char id[40], quoted_type[256], quoted_id[80];
+    char packet[16384];
+    cJSON *request_data = NULL, *reply = NULL;
     const cJSON *op, *d, *status, *success, *response_data, *returned_id;
-    char *encoded = NULL;
     BotResult result = BOT_ERR_JSON;
+    size_t used = 0;
+    int written;
 
     if (!client || !client->authenticated || !client->websocket ||
         !request_type || !response || response_size == 0)
         return BOT_ERR_CONFIG;
     response[0] = '\0';
-    snprintf(id, sizeof(id), "twitchbot-%lu", ++request_sequence);
-    packet = cJSON_CreateObject();
-    body = cJSON_CreateObject();
-    if (!packet || !body) goto cleanup;
-    cJSON_AddNumberToObject(packet, "op", 6);
-    cJSON_AddItemToObject(packet, "d", body);
-    cJSON_AddStringToObject(body, "requestType", request_type);
-    cJSON_AddStringToObject(body, "requestId", id);
+    snprintf(id, sizeof(id), "twitchbot-%lu", ++sequence);
+    if (!json_quote(request_type, quoted_type, sizeof(quoted_type)) ||
+        !json_quote(id, quoted_id, sizeof(quoted_id))) return BOT_ERR_JSON;
+
     if (request_data_json && request_data_json[0])
     {
-        data = cJSON_Parse(request_data_json);
-        if (!cJSON_IsObject(data)) goto cleanup;
-        cJSON_AddItemToObject(body, "requestData", data);
-        data = NULL;
+        request_data = cJSON_Parse(request_data_json);
+        if (!cJSON_IsObject(request_data)) goto cleanup;
+        written = snprintf(packet, sizeof(packet),
+            "{\"op\":6,\"d\":{\"requestType\":%s,\"requestId\":%s,\"requestData\":%s}}",
+            quoted_type, quoted_id, request_data_json);
     }
+    else
+    {
+        written = snprintf(packet, sizeof(packet),
+            "{\"op\":6,\"d\":{\"requestType\":%s,\"requestId\":%s}}",
+            quoted_type, quoted_id);
+    }
+    if (written < 0 || (size_t)written >= sizeof(packet)) goto cleanup;
     result = send_json(client, packet);
     if (result != BOT_OK) goto cleanup;
     result = receive_json(client, &reply);
@@ -287,29 +404,22 @@ BotResult obs_websocket_request(ObsWebSocket *client, const char *request_type,
     success = cJSON_GetObjectItemCaseSensitive(status, "result");
     if (!cJSON_IsNumber(op) || op->valueint != 7 ||
         !cJSON_IsString(returned_id) || strcmp(returned_id->valuestring, id) ||
-        !cJSON_IsTrue(success))
+        !success || !(success->type & cJSON_True))
     {
         log_warning("OBS request failed: %s", request_type);
         result = BOT_ERR_NETWORK;
         goto cleanup;
     }
     response_data = cJSON_GetObjectItemCaseSensitive(d, "responseData");
-    if (response_data)
+    if (response_data && !append_json(response, response_size, &used, response_data))
     {
-        encoded = cJSON_PrintUnformatted(response_data);
-        if (!encoded || strlen(encoded) >= response_size)
-        {
-            result = BOT_ERR_JSON;
-            goto cleanup;
-        }
-        strcpy(response, encoded);
+        result = BOT_ERR_JSON;
+        goto cleanup;
     }
     result = BOT_OK;
 cleanup:
-    cJSON_Delete(packet);
-    cJSON_Delete(data);
+    cJSON_Delete(request_data);
     cJSON_Delete(reply);
-    if (encoded) free(encoded);
     return result;
 }
 
@@ -323,52 +433,33 @@ BotResult obs_websocket_get_scene(ObsWebSocket *client, char *response, size_t s
     return obs_websocket_request(client, "GetCurrentProgramScene", NULL, response, size);
 }
 
+static BotResult obs_request_string(ObsWebSocket *client, const char *request,
+                                    const char *key, const char *value,
+                                    const char *extra)
+{
+    char quoted[8192], json[10000], response[64];
+    int written;
+    if (!value || !json_quote(value, quoted, sizeof(quoted))) return BOT_ERR_CONFIG;
+    written = snprintf(json, sizeof(json), "{\"%s\":%s%s}", key, quoted,
+                       extra ? extra : "");
+    if (written < 0 || (size_t)written >= sizeof(json)) return BOT_ERR_JSON;
+    return obs_websocket_request(client, request, json, response, sizeof(response));
+}
+
 BotResult obs_websocket_set_scene(ObsWebSocket *client, const char *scene_name)
 {
-    cJSON *data = cJSON_CreateObject();
-    char *json;
-    char response[64];
-    BotResult result;
-    if (!scene_name || !data) { cJSON_Delete(data); return BOT_ERR_CONFIG; }
-    cJSON_AddStringToObject(data, "sceneName", scene_name);
-    json = cJSON_PrintUnformatted(data);
-    cJSON_Delete(data);
-    if (!json) return BOT_ERR_JSON;
-    result = obs_websocket_request(client, "SetCurrentProgramScene", json, response, sizeof(response));
-    free(json);
-    return result;
+    return obs_request_string(client, "SetCurrentProgramScene",
+                              "sceneName", scene_name, NULL);
 }
 
 BotResult obs_websocket_restart_media(ObsWebSocket *client, const char *input_name)
 {
-    cJSON *data = cJSON_CreateObject();
-    char *json;
-    char response[64];
-    BotResult result;
-    if (!input_name || !data) { cJSON_Delete(data); return BOT_ERR_CONFIG; }
-    cJSON_AddStringToObject(data, "inputName", input_name);
-    cJSON_AddStringToObject(data, "mediaAction", "OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART");
-    json = cJSON_PrintUnformatted(data);
-    cJSON_Delete(data);
-    if (!json) return BOT_ERR_JSON;
-    result = obs_websocket_request(client, "TriggerMediaInputAction", json, response, sizeof(response));
-    free(json);
-    return result;
+    return obs_request_string(client, "TriggerMediaInputAction", "inputName",
+             input_name, ",\"mediaAction\":\"OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART\"");
 }
 
 BotResult obs_websocket_set_input_mute(ObsWebSocket *client, const char *input_name, int muted)
 {
-    cJSON *data = cJSON_CreateObject();
-    char *json;
-    char response[64];
-    BotResult result;
-    if (!input_name || !data) { cJSON_Delete(data); return BOT_ERR_CONFIG; }
-    cJSON_AddStringToObject(data, "inputName", input_name);
-    cJSON_AddBoolToObject(data, "inputMuted", muted != 0);
-    json = cJSON_PrintUnformatted(data);
-    cJSON_Delete(data);
-    if (!json) return BOT_ERR_JSON;
-    result = obs_websocket_request(client, "SetInputMute", json, response, sizeof(response));
-    free(json);
-    return result;
+    return obs_request_string(client, "SetInputMute", "inputName", input_name,
+                              muted ? ",\"inputMuted\":true" : ",\"inputMuted\":false");
 }
