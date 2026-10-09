@@ -12,7 +12,8 @@ typedef enum
     SECTION_TWITCH,
     SECTION_TELEGRAM,
 	SECTION_DISCORD,
-    SECTION_BOT
+    SECTION_BOT,
+    SECTION_OBS
 
 } ConfigSection;
 
@@ -85,6 +86,8 @@ static ConfigSection parse_section(
 	{
 		return SECTION_DISCORD;
 	}
+
+    if (strcmp(line, "[obs]") == 0) return SECTION_OBS;
 
     if (strcmp(line, "[bot]") == 0)
     {
@@ -245,6 +248,13 @@ static void parse_key_value(
 		}
 	}
 
+
+        case SECTION_OBS:
+            if (strcmp(key, "enabled") == 0)
+                config->obs.enabled = strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
+            else if (strcmp(key, "password") == 0)
+                copy_string(config->obs.password, sizeof(config->obs.password), value);
+            break;
 
         case SECTION_BOT:
 
