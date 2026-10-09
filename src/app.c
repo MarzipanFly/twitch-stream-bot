@@ -22,7 +22,6 @@
 #include "twitch_eventsub_ws.h"
 #include "chat_event.h"
 #include "viewer_rank.h"
-#include "music_library.h"
 #include "music_queue.h"
 
 #include "token_store.h"
@@ -46,20 +45,73 @@ static DWORD g_sound_notice_tick[SOUND_MAX_COUNT];
 static int g_sound_notice_sent[SOUND_MAX_COUNT];
 #define SOUND_NOTICE_INTERVAL_MS 10000UL
 /* 0.9: request queue, playback integration follows in a later step. */
-static MusicLibrary g_music_library;
 static MusicQueue g_music_queue;
-static int g_music_initialized = 0;
 
-static void music_ensure_initialized(void)
+static int youtube_video_id(const char *url, char id[12])
 {
-    if (g_music_initialized)
-        return;
-    music_queue_init(&g_music_queue);
-    if (!music_library_load(&g_music_library, "music"))
-        log_warning("Music directory not found: music");
+    const char *p = NULL;
+    const char *host;
+    const char *end;
+    size_t host_length;
+    size_t i;
+
+    if (strncmp(url, "https://", 8) == 0)
+        host = url + 8;
+    else if (strncmp(url, "http://", 7) == 0)
+        host = url + 7;
     else
-        log_info("Music library: %u MP3 tracks", (unsigned)g_music_library.count);
-    g_music_initialized = 1;
+        return 0;
+    end = strpbrk(host, "/?#");
+    host_length = end ? (size_t)(end - host) : strlen(host);
+    if ((host_length == 11 && strncmp(host, "youtube.com", 11) == 0) ||
+        (host_length == 15 && strncmp(host, "www.youtube.com", 15) == 0) ||
+        (host_length == 13 && strncmp(host, "m.youtube.com", 13) == 0))
+    {
+        const char *path = host + host_length;
+        if (strncmp(path, "/watch?", 7) == 0)
+        {
+            const char *query = path + 7;
+            while (*query && *query != '#')
+            {
+                if (strncmp(query, "v=", 2) == 0)
+                {
+                    p = query + 2;
+                    break;
+                }
+                query = strchr(query, '&');
+                if (!query)
+                    break;
+                ++query;
+            }
+        }
+        else if (strncmp(path, "/shorts/", 8) == 0)
+            p = path + 8;
+        else if (strncmp(path, "/live/", 6) == 0)
+            p = path + 6;
+    }
+    else if (host_length == 8 && strncmp(host, "youtu.be", 8) == 0)
+    {
+        const char *path = host + host_length;
+        if (*path == '/')
+            p = path + 1;
+    }
+    if (!p || strlen(p) < 11)
+        return 0;
+    for (i = 0; i < 11; ++i)
+    {
+        unsigned char ch = (unsigned char)p[i];
+        if (!((ch >= 'A' && ch <= 'Z') ||
+              (ch >= 'a' && ch <= 'z') ||
+              (ch >= '0' && ch <= '9') ||
+              ch == '_' || ch == '-'))
+            return 0;
+        id[i] = (char)ch;
+    }
+    if (p[11] != '\0' && p[11] != '&' && p[11] != '?' &&
+        p[11] != '#' && p[11] != '/')
+        return 0;
+    id[11] = '\0';
+    return 1;
 }
 
 static int music_request_matches(const char *text, char prefix)
@@ -2205,58 +2257,39 @@ static BotResult process_twitch_chat_notification(
     if (music_request_matches(chat_message.text, config->bot.command_prefix))
     {
         const char *argument = chat_message.text + 1 + strlen("заказать");
-        char track_id[MUSIC_TRACK_ID_SIZE];
-        size_t length;
-        const MusicLibraryEntry *entry;
+        char video_id[12];
         size_t i;
         int duplicate = 0;
         while (*argument == ' ' || *argument == '\t')
             ++argument;
-        length = strlen(argument);
-        while (length > 0 &&
-               (argument[length - 1] == ' ' ||
-                argument[length - 1] == '\t' ||
-                argument[length - 1] == '\r' ||
-                argument[length - 1] == '\n'))
-            --length;
-        music_ensure_initialized();
-        if (length == 0 || length >= sizeof(track_id))
+        if (!youtube_video_id(argument, video_id))
             snprintf(response, sizeof(response),
-                     "Использование: !заказать название_трека");
+                     "Использование: !заказать ссылка_на_YouTube");
         else
         {
-            memcpy(track_id, argument, length);
-            track_id[length] = '\0';
-            entry = music_library_find(&g_music_library, track_id);
-            if (entry == NULL)
+            for (i = 0; i < g_music_queue.count; ++i)
+                if (strcmp(g_music_queue.tracks[i].track_id, video_id) == 0)
+                {
+                    duplicate = 1;
+                    break;
+                }
+            if (duplicate)
                 snprintf(response, sizeof(response),
-                         "Трек '%s' не найден в папке music.", track_id);
+                         "Это видео уже находится в очереди.");
+            else if (!music_queue_push(&g_music_queue, video_id,
+                                       chat_message.chatter_user_name))
+                snprintf(response, sizeof(response),
+                         "Очередь заполнена (максимум %d заявок).",
+                         MUSIC_QUEUE_CAPACITY);
             else
             {
-                for (i = 0; i < g_music_queue.count; ++i)
-                    if (_stricmp(g_music_queue.tracks[i].track_id, entry->id) == 0)
-                    {
-                        duplicate = 1;
-                        break;
-                    }
-                if (duplicate)
-                    snprintf(response, sizeof(response),
-                             "Трек '%s' уже находится в очереди.", entry->id);
-                else if (!music_queue_push(&g_music_queue, entry->id,
-                                           chat_message.chatter_user_name))
-                    snprintf(response, sizeof(response),
-                             "Очередь заполнена (максимум %d треков).",
-                             MUSIC_QUEUE_CAPACITY);
-                else
-                {
-                    snprintf(response, sizeof(response),
-                             "%s добавил '%s' в очередь. Позиция: %u. "
-                             "Воспроизведение пока не включено.",
-                             chat_message.chatter_user_name, entry->id,
-                             (unsigned)music_queue_size(&g_music_queue));
-                    log_info("Music request: %s by %s",
-                             entry->id, chat_message.chatter_user_name);
-                }
+                snprintf(response, sizeof(response),
+                         "%s, ссылка принята. Позиция: %u. "
+                         "Воспроизведение пока не включено.",
+                         chat_message.chatter_user_name,
+                         (unsigned)music_queue_size(&g_music_queue));
+                log_info("YouTube request: %s by %s",
+                         video_id, chat_message.chatter_user_name);
             }
         }
         result = twitch_chat_send_message(&config->twitch, response);
