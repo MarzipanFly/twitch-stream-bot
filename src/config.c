@@ -247,7 +247,7 @@ static void parse_key_value(
 			);
 		}
 	}
-
+            break;
 
         case SECTION_OBS:
             if (strcmp(key, "enabled") == 0)
