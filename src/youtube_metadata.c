@@ -1,5 +1,4 @@
 #include "youtube_metadata.h"
-#include "cJSON.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,59 +25,56 @@ static int valid_id(const char *id)
 int youtube_metadata_fetch(const char *video_id, YouTubeMetadata *metadata)
 {
     char command[512];
-    char output[4096];
-    size_t used = 0;
+    char title_line[2048];
+    char duration_line[128];
+    char *end;
+    unsigned long seconds;
+    size_t length;
     FILE *pipe;
-    cJSON *root;
-    cJSON *title;
-    cJSON *duration;
     int status;
-    int ch;
-    int truncated = 0;
 
     if (!metadata || !valid_id(video_id))
         return 0;
     memset(metadata, 0, sizeof(*metadata));
 
-    /* yt-dlp emits only title and duration as compact JSON. */
+    /* Two simple output lines avoid full JSON and JSON template ambiguity. */
     snprintf(command, sizeof(command),
              "yt-dlp.exe --no-playlist --skip-download "
              "--no-warnings --socket-timeout 8 --retries 1 "
-             "--extractor-retries 1 --print \"%%(title,duration)j\" "
+             "--extractor-retries 1 "
+             "--print \"%%(title)s\" --print \"%%(duration)s\" "
              "\"https://www.youtube.com/watch?v=%s\" 2>NUL",
              video_id);
+
     pipe = _popen(command, "r");
     if (!pipe)
         return 0;
-    while ((ch = fgetc(pipe)) != EOF)
+    title_line[0] = '\0';
+    duration_line[0] = '\0';
+    if (fgets(title_line, sizeof(title_line), pipe) == NULL ||
+        fgets(duration_line, sizeof(duration_line), pipe) == NULL)
     {
-        if (used + 1 >= sizeof(output))
-        {
-            truncated = 1;
-            break;
-        }
-        output[used++] = (char)ch;
+        _pclose(pipe);
+        return 0;
     }
-    output[used] = '\0';
     status = _pclose(pipe);
-    if (truncated || status != 0 || used == 0)
+    if (status != 0)
         return 0;
 
-    root = cJSON_Parse(output);
-    if (!root)
+    length = strcspn(title_line, "\r\n");
+    if (length == 0 || length >= sizeof(metadata->title))
         return 0;
-    title = cJSON_GetObjectItemCaseSensitive(root, "title");
-    duration = cJSON_GetObjectItemCaseSensitive(root, "duration");
-    if (!cJSON_IsString(title) || !title->valuestring ||
-        !title->valuestring[0] || !cJSON_IsNumber(duration) ||
-        duration->valuedouble <= 0 || duration->valuedouble > 86400)
-    {
-        cJSON_Delete(root);
+    title_line[length] = '\0';
+
+    seconds = strtoul(duration_line, &end, 10);
+    if (end == duration_line || seconds == 0 || seconds > 86400)
         return 0;
-    }
-    snprintf(metadata->title, sizeof(metadata->title), "%s",
-             title->valuestring);
-    metadata->duration_seconds = (unsigned int)duration->valuedouble;
-    cJSON_Delete(root);
+    while (*end == ' ' || *end == '\r' || *end == '\n' || *end == '\t')
+        ++end;
+    if (*end != '\0')
+        return 0;
+
+    memcpy(metadata->title, title_line, length + 1);
+    metadata->duration_seconds = (unsigned int)seconds;
     return 1;
 }
