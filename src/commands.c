@@ -461,6 +461,12 @@ int chat_command_parse(
             CHAT_COMMAND_HELP;
     }
     else if (
+        chat_command_name_equals(name_start, name_length, "звуки") ||
+        chat_command_name_equals(name_start, name_length, "sounds"))
+    {
+        command->type = CHAT_COMMAND_SOUNDS;
+    }
+    else if (
         chat_command_name_equals(
             name_start,
             name_length,
@@ -817,7 +823,7 @@ int chat_command_build_response(
                 snprintf(
                     buffer,
                     buffer_size,
-					"Команды: !я, !баланс, !топ, !ежедневка, !тг, !дс, !монетка <ставка>, !кости, !шар <вопрос>, !слот <ставка>, !дуэль @ник <ставка>"
+					"Команды: !я, !баланс, !топ, !ежедневка, !тг, !дс, !звуки, !монетка <ставка>, !кости, !шар <вопрос>, !слот <ставка>, !дуэль @ник <ставка>"
                 );
 
 
