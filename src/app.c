@@ -2255,6 +2255,40 @@ static BotResult process_twitch_chat_notification(
         }
     }
 
+    if (chat_message.text[0] == config->bot.command_prefix &&
+        strcmp(chat_message.text + 1, "очередь") == 0)
+    {
+        size_t i;
+        size_t used;
+        if (g_music_queue.count == 0)
+            snprintf(response, sizeof(response), "Очередь музыки пуста.");
+        else
+        {
+            used = (size_t)snprintf(response, sizeof(response),
+                                    "Очередь (%u): ",
+                                    (unsigned)g_music_queue.count);
+            for (i = 0; i < g_music_queue.count && i < 3; ++i)
+            {
+                int written;
+                if (used >= sizeof(response))
+                    break;
+                written = snprintf(response + used, sizeof(response) - used,
+                                   "%s%u) %s [%.40s]",
+                                   i ? "; " : "",
+                                   (unsigned)(i + 1),
+                                   g_music_queue.tracks[i].track_id,
+                                   g_music_queue.tracks[i].requester);
+                if (written < 0)
+                    break;
+                used += (size_t)written;
+            }
+        }
+        result = twitch_chat_send_message(&config->twitch, response);
+        if (result != BOT_OK)
+            log_warning("Music queue response failed (result=%d)", (int)result);
+        return BOT_OK;
+    }
+
     if (music_request_matches(chat_message.text, config->bot.command_prefix))
     {
         const char *argument = chat_message.text + 1 + strlen("заказать");
