@@ -7,6 +7,7 @@
 #include "bot_result.h"
 #include "commands.h"
 #include "command_cooldown.h"
+#include "obs_websocket.h"
 #include "platform.h"
 #include "telegram_api.h"
 #include "http_client.h"
@@ -33,6 +34,10 @@
 
 #define STREAM_POLL_INTERVAL_SECONDS 30
 #define EVENTSUB_RECONNECT_DELAY_SECONDS 5
+#define BRUH_GLOBAL_COOLDOWN_MS (15UL * 1000UL)
+
+static DWORD g_last_bruh_tick = 0;
+static int g_bruh_played = 0;
 
 
 /*
@@ -2090,6 +2095,43 @@ static BotResult process_twitch_chat_notification(
             chat_message.text
         );
 
+        return BOT_OK;
+    }
+
+    /* Shared cooldown across viewers; OBS failures are non-fatal. */
+    if (command.type == CHAT_COMMAND_BRUH)
+    {
+        DWORD now = GetTickCount();
+        ObsWebSocket obs = {0};
+
+        if (!config->obs.enabled)
+        {
+            log_warning("!bruh ignored: OBS integration disabled");
+            return BOT_OK;
+        }
+        if (g_bruh_played &&
+            (DWORD)(now - g_last_bruh_tick) < BRUH_GLOBAL_COOLDOWN_MS)
+        {
+            log_debug("!bruh global cooldown: %s", chat_message.chatter_user_name);
+            return BOT_OK;
+        }
+
+        result = obs_websocket_connect(&obs, config->obs.password);
+        if (result == BOT_OK)
+            result = obs_websocket_restart_media(&obs, "Bot_Bruh");
+        obs_websocket_close(&obs);
+
+        if (result == BOT_OK)
+        {
+            g_last_bruh_tick = GetTickCount();
+            g_bruh_played = 1;
+            log_info("OBS !bruh played by %s", chat_message.chatter_user_name);
+        }
+        else
+        {
+            log_warning("OBS !bruh failed for %s (result=%d)",
+                        chat_message.chatter_user_name, (int)result);
+        }
         return BOT_OK;
     }
 
