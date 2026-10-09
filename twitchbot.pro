@@ -19,6 +19,7 @@ SOURCES += \
     src/logger.c \
     src/main.c \
     src/music_queue.c \
+    src/music_audio.c \
     src/music_library.c \
     src/youtube_metadata.c \
     src/obs_websocket.c \
@@ -47,6 +48,7 @@ HEADERS += \
     include/http_client.h \
     include/logger.h \
     include/music_queue.h \
+    include/music_audio.h \
     include/music_library.h \
     include/youtube_metadata.h \
     include/obs_websocket.h \
