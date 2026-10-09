@@ -2082,9 +2082,34 @@ static BotResult process_twitch_chat_notification(
                 DWORD now = GetTickCount();
                 DWORD cooldown = sound->cooldown_seconds * 1000UL;
                 ObsWebSocket obs = {0};
+                ViewerProfile *sound_profile = NULL;
                 if (g_sound_played[i] &&
                     (DWORD)(now - g_sound_last_tick[i]) < cooldown)
                     return BOT_OK;
+
+                if (sound->cost > 0)
+                {
+                    sound_profile = viewer_profile_get_or_create(
+                        chat_message.chatter_user_id,
+                        chat_message.chatter_user_login,
+                        chat_message.chatter_user_name);
+                    if (sound_profile == NULL)
+                    {
+                        log_warning("Sound !%s: viewer profile unavailable",
+                                    sound->command);
+                        return BOT_OK;
+                    }
+                    if (sound_profile->balance < sound->cost)
+                    {
+                        snprintf(response, sizeof(response),
+                                 "%s, для !%s нужно %lld апельсинов. Баланс: %lld.",
+                                 chat_message.chatter_user_name,
+                                 sound->command, sound->cost,
+                                 sound_profile->balance);
+                        (void)twitch_chat_send_message(&config->twitch, response);
+                        return BOT_OK;
+                    }
+                }
 
                 result = obs_websocket_connect(&obs, config->obs.password);
                 if (result == BOT_OK)
@@ -2094,6 +2119,22 @@ static BotResult process_twitch_chat_notification(
                 {
                     g_sound_last_tick[i] = GetTickCount();
                     g_sound_played[i] = 1;
+                    if (sound_profile != NULL)
+                    {
+                        long long previous_balance = sound_profile->balance;
+                        sound_profile->balance -= sound->cost;
+                        if (!viewer_profile_save())
+                        {
+                            sound_profile->balance = previous_balance;
+                            log_warning("Sound !%s played but payment could not be saved",
+                                        sound->command);
+                        }
+                        else
+                            log_info("Sound !%s cost %lld oranges; %s balance: %lld",
+                                     sound->command, sound->cost,
+                                     chat_message.chatter_user_name,
+                                     sound_profile->balance);
+                    }
                     log_info("OBS sound !%s played by %s",
                              sound->command, chat_message.chatter_user_name);
                 }
