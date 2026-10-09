@@ -20,6 +20,7 @@ SOURCES += \
     src/main.c \
     src/music_queue.c \
     src/music_library.c \
+    src/youtube_metadata.c \
     src/obs_websocket.c \
     src/platform_win.c \
     src/telegram_api.c \
@@ -47,6 +48,7 @@ HEADERS += \
     include/logger.h \
     include/music_queue.h \
     include/music_library.h \
+    include/youtube_metadata.h \
     include/obs_websocket.h \
     include/platform.h \
     include/telegram_api.h \
