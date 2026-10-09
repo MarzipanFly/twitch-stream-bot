@@ -5,7 +5,8 @@ CONFIG -= app_bundle
 CONFIG -= qt
 
 INCLUDEPATH += \
-    $$PWD/include \
+    $PWD/include \
+    $PWD/include/integrations/obs \
     $$PWD/third_party/cjson
 
 SOURCES += \
@@ -18,7 +19,7 @@ SOURCES += \
     src/http_client.c \
     src/logger.c \
     src/main.c \
-    src/obs_websocket.c \
+    src/integrations/obs/obs_websocket.c \
     src/platform_win.c \
     src/telegram_api.c \
     src/token_store.c \
@@ -43,7 +44,7 @@ HEADERS += \
     include/config.h \
     include/http_client.h \
     include/logger.h \
-    include/obs_websocket.h \
+    include/integrations/obs/obs_websocket.h \
     include/platform.h \
     include/telegram_api.h \
     include/token_store.h \
