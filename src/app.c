@@ -20,6 +20,7 @@
 #include "twitch_eventsub.h"
 #include "twitch_eventsub_ws.h"
 #include "chat_event.h"
+#include "viewer_rank.h"
 
 #include "token_store.h"
 
@@ -2181,6 +2182,55 @@ static BotResult process_twitch_chat_notification(
             );
         }
     }
+	else if (command.type == CHAT_COMMAND_RANK)
+	{
+		if (profile == NULL)
+		{
+			snprintf(
+				response,
+				sizeof(response),
+				"Не удалось загрузить профиль."
+			);
+		}
+		else
+		{
+			const ViewerRank *current;
+			const ViewerRank *next;
+
+			current = viewer_rank_get(profile->balance);
+			next = viewer_rank_next(profile->balance);
+
+			if (next == NULL)
+			{
+				snprintf(
+					response,
+					sizeof(response),
+					"%s, твое звание: %s!",
+					profile->display_name,
+					current->name
+				);
+			}
+			else
+			{
+				long long remaining;
+
+				remaining = next->minimum_balance -
+				profile->balance;
+
+				snprintf(
+					response,
+					sizeof(response),
+					"%s, звание: %s. "
+					"До звания \"%s\" осталось"
+					"%lld апельсинов.",
+					profile->display_name,
+					current->name,
+					next->name,
+					remaining
+				);
+			}
+		}
+	}
     else if (command.type == CHAT_COMMAND_PROFILE)
     {
         if (profile == NULL)
@@ -2194,6 +2244,10 @@ static BotResult process_twitch_chat_notification(
         else
         {
             long long days_with_channel = 0;
+
+			const ViewerRank *rank;
+
+			rank = viewer_rank_get(profile->balance);
 
             if (profile->created_at > 0)
             {
@@ -2210,8 +2264,13 @@ static BotResult process_twitch_chat_notification(
             snprintf(
                 response,
                 sizeof(response),
-                "%s | %lld апельсинов | с нами %lld дн. | ежедневок: %lld | монетка: %lld/%lld | слот: джекпот %lld, пары %lld, проигрыши %lld | дуэли: %lld/%lld",
+				"%s | Звание: %s | %lld апельсинов | "
+				"с нами %lld дн. | ежедневок: %lld | "
+				"монетка: %lld/%lld | "
+				"слот: джекпот %lld, пары %lld, проигрыши %lld | "
+				"дуэли: %lld/%lld",
                 profile->display_name,
+				rank->name,
                 profile->balance,
                 days_with_channel,
                 profile->daily_count,

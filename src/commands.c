@@ -534,6 +534,21 @@ int chat_command_parse(
 		chat_command_name_equals(
 			name_start,
 			name_length,
+			"звание"
+		) ||
+		chat_command_name_equals(
+			name_start,
+			name_length,
+			"rank"
+		))
+	{
+		command->type =
+			CHAT_COMMAND_RANK;
+	}
+	else if (
+		chat_command_name_equals(
+			name_start,
+			name_length,
 			"забрать"
 		) ||
 		chat_command_name_equals(
@@ -543,7 +558,7 @@ int chat_command_parse(
 		))
 	{
 		command->type =
-			CHAT_COMMAND_PROFILE;
+			CHAT_COMMAND_CLAIM;
 	}
 
 
