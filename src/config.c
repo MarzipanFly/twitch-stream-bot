@@ -13,7 +13,8 @@ typedef enum
     SECTION_TELEGRAM,
 	SECTION_DISCORD,
     SECTION_BOT,
-    SECTION_OBS
+    SECTION_OBS,
+    SECTION_SOUNDS
 
 } ConfigSection;
 
@@ -88,6 +89,7 @@ static ConfigSection parse_section(
 	}
 
     if (strcmp(line, "[obs]") == 0) return SECTION_OBS;
+    if (strcmp(line, "[sounds]") == 0) return SECTION_SOUNDS;
 
     if (strcmp(line, "[bot]") == 0)
     {
@@ -255,6 +257,42 @@ static void parse_key_value(
             else if (strcmp(key, "password") == 0)
                 copy_string(config->obs.password, sizeof(config->obs.password), value);
             break;
+
+        case SECTION_SOUNDS:
+        {
+            /* Format: command=OBS_input,seconds; seconds defaults to 15. */
+            SoundConfig *sound;
+            const char *comma = strrchr(value, ',');
+            size_t input_length = comma ? (size_t)(comma - value) : strlen(value);
+            unsigned int seconds = 15;
+            size_t i;
+
+            if (key[0] == '\0' || strlen(key) >= SOUND_NAME_SIZE ||
+                input_length == 0 || input_length >= CONFIG_STRING_SIZE ||
+                config->sound_count >= SOUND_MAX_COUNT)
+                break;
+            for (i = 0; i < config->sound_count; ++i)
+                if (strcmp(config->sounds[i].command, key) == 0)
+                    break;
+            if (i < config->sound_count)
+                break;
+            if (comma)
+            {
+                char tail;
+                if (sscanf(comma + 1, "%u %c", &seconds, &tail) != 1 ||
+                    seconds > 3600)
+                    break;
+            }
+            sound = &config->sounds[config->sound_count++];
+            copy_string(sound->command, sizeof(sound->command), key);
+            memcpy(sound->input, value, input_length);
+            sound->input[input_length] = '\0';
+            while (input_length > 0 &&
+                   isspace((unsigned char)sound->input[input_length - 1]))
+                sound->input[--input_length] = '\0';
+            sound->cooldown_seconds = seconds;
+            break;
+        }
 
         case SECTION_BOT:
 
