@@ -688,6 +688,11 @@ int chat_command_parse(
         command->type =
             CHAT_COMMAND_DECLINE;
     }
+    else if (chat_command_name_equals(name_start, name_length, "брух") ||
+             chat_command_name_equals(name_start, name_length, "bruh"))
+    {
+        command->type = CHAT_COMMAND_BRUH;
+    }
     else
     {
         command->type =
@@ -696,7 +701,7 @@ int chat_command_parse(
 
 
     return 1;
-}
+
 
 
 /*
