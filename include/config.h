@@ -82,6 +82,7 @@ typedef struct
     char command[SOUND_NAME_SIZE];
     char input[CONFIG_STRING_SIZE];
     unsigned int cooldown_seconds;
+    long long cost;
 } SoundConfig;
 
 typedef struct
