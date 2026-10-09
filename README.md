@@ -214,3 +214,7 @@ OBS Studio и Twitch-бот будут работать **на одном Window
 ### OBS WebSocket: состояние реализации
 
 `src/obs_websocket.c` реализует HTTP Upgrade, получение `Hello` (op 0), SHA-256/Base64 вычисление ответа на challenge, отправку `Identify` (op 1) и ожидание `Identified` (op 2). Используются WinHTTP и Windows CryptoAPI. Адрес фиксирован на `127.0.0.1:4455`, пароль берётся вызывающим кодом из `config.obs.password`. **Пока нет вызова `obs_websocket_connect()` из приложения; наличие файлов не означает, что бот подключается к OBS автоматически.** Код не проходил проверку сборки и соединения в Windows/OBS. Не публикуйте реальный пароль.
+
+## Диагностика OBS
+
+Запустите `twitchbot.exe --test-obs` при запущенном OBS Studio 28+ с включённым WebSocket-сервером на 127.0.0.1:4455. Режим проверяет локальное подключение, авторизацию и `GetVersion`, не обращаясь к Twitch. В `config.ini` укажите `[obs]` и `password=...`. OBS-управление доступно через `obs_websocket_request`, `obs_websocket_get_scene`, `obs_websocket_set_scene`, `obs_websocket_restart_media` и `obs_websocket_set_input_mute`. Эти функции пока не вызываются из обработчика Twitch-команд. Проверка сборки и OBS остаётся необходимой.
