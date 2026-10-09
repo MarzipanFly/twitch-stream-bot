@@ -2,6 +2,7 @@
 #define CONFIG_H
 
 #include "bot_result.h"
+#include <stddef.h>
 
 /*
  * Обычные строковые параметры:
@@ -72,6 +73,17 @@ typedef struct
     char password[CONFIG_STRING_SIZE];
 } ObsConfig;
 
+/* Configurable OBS sounds, UTF-8 command names without prefix. */
+#define SOUND_MAX_COUNT 16
+#define SOUND_NAME_SIZE 64
+
+typedef struct
+{
+    char command[SOUND_NAME_SIZE];
+    char input[CONFIG_STRING_SIZE];
+    unsigned int cooldown_seconds;
+} SoundConfig;
+
 typedef struct
 {
     TwitchConfig twitch;
@@ -79,6 +91,8 @@ typedef struct
 	DiscordConfig discord;
     BotConfig bot;
     ObsConfig obs;
+    SoundConfig sounds[SOUND_MAX_COUNT];
+    size_t sound_count;
 
 } AppConfig;
 
