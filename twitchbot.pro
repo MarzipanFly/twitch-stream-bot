@@ -18,6 +18,7 @@ SOURCES += \
     src/http_client.c \
     src/logger.c \
     src/main.c \
+    src/obs_websocket.c \
     src/platform_win.c \
     src/telegram_api.c \
     src/token_store.c \
@@ -42,6 +43,7 @@ HEADERS += \
     include/config.h \
     include/http_client.h \
     include/logger.h \
+    include/obs_websocket.h \
     include/platform.h \
     include/telegram_api.h \
     include/token_store.h \
@@ -61,14 +63,16 @@ HEADERS += \
 win32-g++ {
     LIBS += -lwinhttp
     LIBS += -lcrypt32
+    LIBS += -ladvapi32
 }
 
 win32-msvc* {
     LIBS += Winhttp.lib
     LIBS += Crypt32.lib
+    LIBS += Advapi32.lib
 }
 
 DISTFILES += \
     config.ini
 
-VERSION = 0.7.7.0
+VERSION = 0.8.0.0
