@@ -463,3 +463,25 @@ BotResult obs_websocket_set_input_mute(ObsWebSocket *client, const char *input_n
     return obs_request_string(client, "SetInputMute", "inputName", input_name,
                               muted ? ",\"inputMuted\":true" : ",\"inputMuted\":false");
 }
+
+BotResult obs_websocket_set_media_file(ObsWebSocket *client, const char *input_name,
+                                        const char *absolute_path)
+{
+    char quoted_name[256];
+    char quoted_path[1024];
+    char request[1536];
+    char response[4096];
+    int written;
+    if (!input_name || !absolute_path ||
+        !json_quote(input_name, quoted_name, sizeof(quoted_name)) ||
+        !json_quote(absolute_path, quoted_path, sizeof(quoted_path)))
+        return BOT_ERR_CONFIG;
+    written = snprintf(request, sizeof(request),
+                       "{\"inputName\":%s,\"inputSettings\":{\"local_file\":%s},"
+                       "\"overlay\":true}",
+                       quoted_name, quoted_path);
+    if (written < 0 || (size_t)written >= sizeof(request))
+        return BOT_ERR_JSON;
+    return obs_websocket_request(client, "SetInputSettings", request,
+                                 response, sizeof(response));
+}
