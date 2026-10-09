@@ -2,6 +2,8 @@
 #include "config.h"
 #include "obs_websocket.h"
 #include "bot_result.h"
+#include "music_audio.h"
+#include <windows.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -9,6 +11,30 @@
 /* Local OBS diagnostic, independent of Twitch and Internet. */
 int main(int argc, char *argv[])
 {
+    if (argc == 3 && strcmp(argv[1], "--test-music") == 0)
+    {
+        char path[MAX_PATH];
+        DWORD attributes;
+        if (!CreateDirectoryA("music_cache", NULL))
+        {
+            attributes = GetFileAttributesA("music_cache");
+            if (attributes == INVALID_FILE_ATTRIBUTES ||
+                !(attributes & FILE_ATTRIBUTE_DIRECTORY))
+            {
+                fprintf(stderr, "Cannot create music_cache directory.\n");
+                return 1;
+            }
+        }
+        printf("Preparing audio for video ID: %s\n", argv[2]);
+        if (!music_audio_prepare(argv[2], "music_cache",
+                                 path, sizeof(path)))
+        {
+            fprintf(stderr, "Audio preparation failed. Check yt-dlp and FFmpeg output.\n");
+            return 1;
+        }
+        printf("Audio ready: %s\n", path);
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--test-obs") == 0)
     {
         AppConfig config;
