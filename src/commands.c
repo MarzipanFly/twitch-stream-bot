@@ -530,6 +530,21 @@ int chat_command_parse(
         command->type =
             CHAT_COMMAND_PROFILE;
     }
+	else if (
+		chat_command_name_equals(
+			name_start,
+			name_length,
+			"забрать"
+		) ||
+		chat_command_name_equals(
+			name_start,
+			name_length,
+			"claim"
+		))
+	{
+		command->type =
+			CHAT_COMMAND_PROFILE;
+	}
 
 
     /*

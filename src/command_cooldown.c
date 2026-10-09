@@ -50,6 +50,9 @@ static DWORD get_cooldown_ms(
 		case CHAT_COMMAND_DECLINE:
             return 5UL * 1000UL;
 
+		case CHAT_COMMAND_CLAIM:
+			return 0;
+
 		default:
 			return 0;
 	}

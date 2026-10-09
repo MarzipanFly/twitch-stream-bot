@@ -11,6 +11,7 @@ INCLUDEPATH += \
 SOURCES += \
     src/app.c \
     src/bot_result.c \
+    src/chat_event.c \
     src/command_cooldown.c \
     src/commands.c \
     src/config.c \
@@ -34,6 +35,7 @@ SOURCES += \
 HEADERS += \
     include/app.h \
     include/bot_result.h \
+    include/chat_event.h \
     include/command_cooldown.h \
     include/commands.h \
     include/config.h \
@@ -67,4 +69,4 @@ win32-msvc* {
 DISTFILES += \
     config.ini
 
-VERSION = 0.7.5.0
+VERSION = 0.7.6.0

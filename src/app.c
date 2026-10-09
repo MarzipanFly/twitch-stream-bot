@@ -19,6 +19,7 @@
 #include "twitch_chat.h"
 #include "twitch_eventsub.h"
 #include "twitch_eventsub_ws.h"
+#include "chat_event.h"
 
 #include "token_store.h"
 
@@ -2016,7 +2017,8 @@ static int ascii_equals_ignore_case(
  */
 static BotResult process_twitch_chat_notification(
     AppConfig *config,
-    const char *json
+	const char *json,
+	ChatEvent *chat_event
 )
 {
     TwitchChatMessage chat_message;
@@ -2094,7 +2096,71 @@ static BotResult process_twitch_chat_notification(
      * Баланс зависит от конкретного Twitch-пользователя,
      * поэтому ответ формируется здесь, а не в commands.c.
      */
-    if (command.type == CHAT_COMMAND_BALANCE)
+	if (command.type == CHAT_COMMAND_CLAIM)
+	{
+		long long reward;
+
+		if (profile == NULL)
+		{
+			snprintf(
+				response,
+				sizeof(response),
+				"Не удалось загрузить профиль"
+			);
+		}
+		else if (
+			chat_event == NULL ||
+			!chat_event->active ||
+			time(NULL) >= chat_event->expires_at)
+		{
+			/*
+			 * Нет активного дропа
+			 * Молча игнорируем команду
+			 */
+			return BOT_OK;
+		}
+		else
+		{
+			long long old_balance = profile->balance;
+			reward = chat_event->reward;
+			profile->balance += reward;
+
+			if (!viewer_profile_save())
+			{
+				profile->balance = old_balance;
+
+				snprintf(
+					response,
+					sizeof (response),
+					"Не удалось сохранить награду."
+				);
+			}
+			else
+			{
+				long long claimed_reward;
+
+				/*
+				 * Завершаем событие только после
+				 * успешного сохранения баланса.
+				 */
+				chat_event_claim(
+					chat_event,
+					&claimed_reward
+				);
+
+				snprintf(
+					response,
+					sizeof(response),
+					"%s первым забрал золотой апельсин! "
+					"Награда: %lld апельсинов. Баланс: %lld.",
+					profile->display_name,
+					reward,
+					profile->balance
+				);
+			}
+		}
+	}
+	else if (command.type == CHAT_COMMAND_BALANCE)
     {
         if (profile == NULL)
         {
@@ -2944,6 +3010,7 @@ static BotResult run_bot_loop(
 
     BotResult result;
     BotResult chat_result;
+	ChatEvent chat_event;
 
     int previous_live_state;
     int chat_connected = 0;
@@ -3016,6 +3083,10 @@ static BotResult run_bot_loop(
 
     last_token_validation =
         GetTickCount();
+
+	chat_event_init(
+			&chat_event
+	);
 
     while (!stop_requested())
     {
@@ -3156,7 +3227,8 @@ static BotResult run_bot_loop(
                 {
                     chat_result = process_twitch_chat_notification(
                         config,
-                        json
+						json,
+						&chat_event
                     );
 
                     if (chat_result != BOT_OK)
@@ -3226,6 +3298,56 @@ static BotResult run_bot_loop(
             last_stream_check =
                 now;
         }
+		/*
+		 * ----------------------------------------------------
+		 * RANDOM CHAT EVENT
+		 * ----------------------------------------------------
+		 */
+		int event_result;
+
+		event_result=
+				chat_event_update(
+					&chat_event
+				);
+
+		if (event_result == 1)
+		{
+			char event_message[512];
+
+			snprintf(
+				event_message,
+				sizeof (event_message),
+				" В чате появился золотой апельсин! "
+				"Первый, уто напишет !забрать, получит %lld апельсинов. "
+				"У вас 60 секунд",
+				chat_event.reward
+			);
+
+			log_info(
+				"Random chat event started: reward=%lld",
+				chat_event.reward
+			);
+
+			result =
+				twitch_chat_send_message(
+					&config->twitch,
+					event_message
+			);
+
+			if (result != BOT_OK)
+			{
+				log_warning(
+					"Failed to send random chat event message: %s",
+					bot_result_to_string(result)
+				);
+			}
+		}
+		else if (event_result == -1)
+		{
+			log_info(
+				"Random chat event expired"
+			);
+		}
     }
 
     twitch_eventsub_ws_close(
