@@ -18,6 +18,7 @@ SOURCES += \
     src/http_client.c \
     src/logger.c \
     src/main.c \
+    src/music_queue.c \
     src/obs_websocket.c \
     src/platform_win.c \
     src/telegram_api.c \
@@ -43,6 +44,7 @@ HEADERS += \
     include/config.h \
     include/http_client.h \
     include/logger.h \
+    include/music_queue.h \
     include/obs_websocket.h \
     include/platform.h \
     include/telegram_api.h \
