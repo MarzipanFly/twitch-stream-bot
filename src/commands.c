@@ -701,7 +701,7 @@ int chat_command_parse(
 
 
     return 1;
-
+}
 
 
 /*
