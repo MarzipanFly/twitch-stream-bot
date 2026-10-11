@@ -51,6 +51,8 @@ static MusicQueue g_music_queue;
 static MusicWorker g_music_worker;
 static int g_music_worker_active = 0;
 static int g_music_playback_started = 0;
+static DWORD g_music_last_status_check = 0;
+static DWORD g_music_started_tick = 0;
 
 
 static int youtube_video_id(const char *url, char id[12])
@@ -3712,6 +3714,30 @@ static BotResult run_bot_loop(
          * Music 0.9: start one background download and play the first
          * queued request. Automatic next-track handling comes later.
          */
+        if (config->obs.enabled && g_music_playback_started &&
+            (DWORD)(GetTickCount() - g_music_last_status_check) >= 3000UL)
+        {
+            ObsWebSocket obs = {0};
+            char media_state[80];
+            BotResult state_result;
+            g_music_last_status_check = GetTickCount();
+            state_result = obs_websocket_connect(&obs, config->obs.password);
+            if (state_result == BOT_OK)
+                state_result = obs_websocket_get_media_state(
+                    &obs, "Bot_Music", media_state, sizeof(media_state));
+            obs_websocket_close(&obs);
+            if (state_result == BOT_OK &&
+                (DWORD)(GetTickCount() - g_music_started_tick) >= 5000UL &&
+                strcmp(media_state, "OBS_MEDIA_STATE_ENDED") == 0)
+            {
+                g_music_playback_started = 0;
+                log_info("OBS music finished; advancing queue");
+            }
+            else if (state_result != BOT_OK)
+                log_warning("Could not query OBS music state (%d)",
+                            (int)state_result);
+        }
+
         if (config->obs.enabled && !g_music_playback_started)
         {
             if (!g_music_worker_active && g_music_queue.count > 0)
@@ -3761,6 +3787,8 @@ static BotResult run_bot_loop(
                         {
                             music_queue_pop(&g_music_queue, &finished);
                             g_music_playback_started = 1;
+                            g_music_started_tick = GetTickCount();
+                            g_music_last_status_check = GetTickCount();
                             log_info("Music playing in OBS: %s (requested by %s)",
                                      finished.track_id, finished.requester);
                         }
@@ -3770,6 +3798,8 @@ static BotResult run_bot_loop(
                                         "request stays in queue", (int)playback_result);
                             /* Do not retry endlessly every keepalive. */
                             g_music_playback_started = 1;
+                            g_music_started_tick = GetTickCount();
+                            g_music_last_status_check = GetTickCount();
                         }
                     }
                     else
