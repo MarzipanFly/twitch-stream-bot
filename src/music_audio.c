@@ -77,6 +77,55 @@ int music_audio_prepare(const char *video_id, const char *directory,
     return 1;
 }
 
+/* Find previously renamed files by their unique YouTube ID suffix. */
+int music_audio_find_cached(const char *video_id, char *output_utf8,
+                            size_t capacity)
+{
+    wchar_t directory[MAX_PATH], pattern[MAX_PATH], suffix[32];
+    WIN32_FIND_DATAW entry;
+    HANDLE found;
+    DWORD length;
+    size_t name_length, suffix_length;
+    int converted;
+
+    if (!output_utf8 || !capacity || !valid_video_id(video_id))
+        return 0;
+    output_utf8[0] = '\0';
+    length = GetFullPathNameW(L"music_cache", MAX_PATH, directory, NULL);
+    if (!length || length >= MAX_PATH)
+        return 0;
+    if (swprintf(suffix, 32, L" [%hs].mp3", video_id) < 0 ||
+        swprintf(pattern, MAX_PATH, L"%ls\\*%ls", directory, suffix) < 0)
+        return 0;
+    found = FindFirstFileW(pattern, &entry);
+    if (found == INVALID_HANDLE_VALUE)
+        return 0;
+    suffix_length = wcslen(suffix);
+    do
+    {
+        wchar_t absolute_path[MAX_PATH];
+        if (entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            continue;
+        name_length = wcslen(entry.cFileName);
+        if (name_length <= suffix_length ||
+            wcscmp(entry.cFileName + name_length - suffix_length, suffix) != 0)
+            continue;
+        if (swprintf(absolute_path, MAX_PATH, L"%ls\\%ls",
+                     directory, entry.cFileName) < 0)
+            continue;
+        converted = WideCharToMultiByte(CP_UTF8, 0, absolute_path, -1,
+                                        output_utf8, (int)capacity, NULL, NULL);
+        if (converted)
+        {
+            FindClose(found);
+            return 1;
+        }
+    } while (FindNextFileW(found, &entry));
+    FindClose(found);
+    output_utf8[0] = '\0';
+    return 0;
+}
+
 /* Windows Unicode rename: preserve Cyrillic, remove forbidden filename chars. */
 int music_audio_name_file(const char *downloaded_path, const char *title_utf8,
                           const char *video_id, char *output_utf8, size_t capacity)
