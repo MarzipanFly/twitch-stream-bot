@@ -2278,10 +2278,10 @@ static BotResult process_twitch_chat_notification(
                 if (used >= sizeof(response))
                     break;
                 written = snprintf(response + used, sizeof(response) - used,
-                                   "%s%u) %s [%.40s]",
+                                   "%s%u) %.65s [%.30s]",
                                    i ? "; " : "",
                                    (unsigned)(i + 1),
-                                   g_music_queue.tracks[i].track_id,
+                                   g_music_queue.tracks[i].title,
                                    g_music_queue.tracks[i].requester);
                 if (written < 0)
                     break;
@@ -2349,14 +2349,15 @@ static BotResult process_twitch_chat_notification(
                              "Видео слишком длинное: %u мин. Максимум 10 мин.",
                              (metadata.duration_seconds + 59) / 60);
                 else if (!music_queue_push(&g_music_queue, video_id,
-                                           chat_message.chatter_user_name))
+                                           chat_message.chatter_user_name,
+                                           metadata.title))
                     snprintf(response, sizeof(response),
                              "Не удалось добавить видео в очередь.");
                 else
                 {
                     snprintf(response, sizeof(response),
                              "%s заказал: %.180s (%u:%02u). "
-                             "Позиция: %u. Воспроизведение пока выключено.",
+                             "Позиция: %u. Ожидайте воспроизведения.",
                              chat_message.chatter_user_name,
                              metadata.title,
                              metadata.duration_seconds / 60,
