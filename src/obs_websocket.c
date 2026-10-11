@@ -458,6 +458,12 @@ BotResult obs_websocket_restart_media(ObsWebSocket *client, const char *input_na
              input_name, ",\"mediaAction\":\"OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART\"");
 }
 
+BotResult obs_websocket_stop_media(ObsWebSocket *client, const char *input_name)
+{
+    return obs_request_string(client, "TriggerMediaInputAction", "inputName",
+             input_name, ",\"mediaAction\":\"OBS_WEBSOCKET_MEDIA_INPUT_ACTION_STOP\"");
+}
+
 BotResult obs_websocket_set_input_mute(ObsWebSocket *client, const char *input_name, int muted)
 {
     return obs_request_string(client, "SetInputMute", "inputName", input_name,
