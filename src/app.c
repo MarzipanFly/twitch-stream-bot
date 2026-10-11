@@ -86,10 +86,79 @@ static void music_write_obs_text(const char *destination, const char *value)
     }
 }
 
+/* Strip only known trailing YouTube labels for the OBS overlay. */
+static int music_label_is_noise(const char *start, size_t length)
+{
+    static const char *labels[] = {
+        "official video", "official music video", "official audio",
+        "official lyric video", "official lyrics video", "lyric video",
+        "lyrics video", "lyrics", "lyric", "audio", "visualizer",
+        "official visualizer", "music video"
+    };
+    size_t i, j;
+    if (length == 11)
+    {
+        int is_id = 1;
+        for (j = 0; j < length; ++j)
+        {
+            unsigned char c = (unsigned char)start[j];
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                  (c >= '0' && c <= '9') || c == '_' || c == '-'))
+            { is_id = 0; break; }
+        }
+        if (is_id) return 1;
+    }
+    for (i = 0; i < sizeof(labels) / sizeof(labels[0]); ++i)
+    {
+        if (strlen(labels[i]) != length) continue;
+        for (j = 0; j < length; ++j)
+        {
+            unsigned char c = (unsigned char)start[j];
+            if (c >= 'A' && c <= 'Z') c = (unsigned char)(c + ('a' - 'A'));
+            if (c != (unsigned char)labels[i][j]) break;
+        }
+        if (j == length) return 1;
+    }
+    return 0;
+}
+
+static void music_clean_obs_title(const char *title, char *clean, size_t capacity)
+{
+    size_t length, begin;
+    if (!title || !clean || !capacity) return;
+    length = strlen(title);
+    if (length >= capacity) length = capacity - 1;
+    memcpy(clean, title, length);
+    clean[length] = '\0';
+    while (length)
+    {
+        char closing, opening;
+        while (length && clean[length - 1] == ' ') --length;
+        clean[length] = '\0';
+        if (!length) break;
+        closing = clean[length - 1];
+        if (closing != ')' && closing != ']') break;
+        opening = closing == ')' ? '(' : '[';
+        begin = length - 1;
+        while (begin && clean[begin - 1] != opening) --begin;
+        if (!begin || !music_label_is_noise(clean + begin, length - begin - 1))
+            break;
+        length = begin - 1;
+        while (length && (clean[length - 1] == ' ' ||
+               clean[length - 1] == '-' )) --length;
+        clean[length] = '\0';
+    }
+    if (!length) snprintf(clean, capacity, "%s", title);
+}
+
 static void music_update_obs_text(const char *title, const char *requester)
 {
     char label[320];
-    music_write_obs_text("obs_now_playing.txt", title);
+    char clean_title[512];
+    clean_title[0] = '\0';
+    if (title && title[0])
+        music_clean_obs_title(title, clean_title, sizeof(clean_title));
+    music_write_obs_text("obs_now_playing.txt", clean_title);
     if (title && title[0] && requester && requester[0])
     {
         snprintf(label, sizeof(label), "Заказал: %s", requester);
