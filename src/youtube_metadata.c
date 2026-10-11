@@ -39,7 +39,7 @@ int youtube_metadata_fetch(const char *video_id, YouTubeMetadata *metadata)
 
     /* Two simple output lines avoid full JSON and JSON template ambiguity. */
     snprintf(command, sizeof(command),
-             "yt-dlp.exe --no-playlist --skip-download "
+             "yt-dlp.exe --encoding utf-8 --no-playlist --skip-download "
              "--no-warnings --socket-timeout 8 --retries 1 "
              "--extractor-retries 1 "
              "--print \"%%(title)s\" --print \"%%(duration)s\" "
