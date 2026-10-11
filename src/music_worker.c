@@ -19,10 +19,12 @@ static DWORD WINAPI music_worker_thread(LPVOID parameter)
     }
     {
         char downloaded[MAX_PATH];
-        if (music_audio_prepare(worker->video_id, "music_cache",
-                                downloaded, sizeof(downloaded)) &&
-            music_audio_name_file(downloaded, worker->title, worker->video_id,
-                                  worker->path, sizeof(worker->path)))
+        if (music_audio_find_cached(worker->video_id, worker->path,
+                                    sizeof(worker->path)) ||
+            (music_audio_prepare(worker->video_id, "music_cache",
+                                 downloaded, sizeof(downloaded)) &&
+             music_audio_name_file(downloaded, worker->title, worker->video_id,
+                                   worker->path, sizeof(worker->path))))
             InterlockedExchange(&worker->state, 2);
         else
             InterlockedExchange(&worker->state, -1);
