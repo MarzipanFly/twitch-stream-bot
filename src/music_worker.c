@@ -17,18 +17,24 @@ static DWORD WINAPI music_worker_thread(LPVOID parameter)
             return 0;
         }
     }
-    if (music_audio_prepare(worker->video_id, "music_cache",
-                            worker->path, sizeof(worker->path)))
-        InterlockedExchange(&worker->state, 2);
-    else
-        InterlockedExchange(&worker->state, -1);
+    {
+        char downloaded[MAX_PATH];
+        if (music_audio_prepare(worker->video_id, "music_cache",
+                                downloaded, sizeof(downloaded)) &&
+            music_audio_name_file(downloaded, worker->title, worker->video_id,
+                                  worker->path, sizeof(worker->path)))
+            InterlockedExchange(&worker->state, 2);
+        else
+            InterlockedExchange(&worker->state, -1);
+    }
     return 0;
 }
 
-int music_worker_start(MusicWorker *worker, const char *video_id)
+int music_worker_start(MusicWorker *worker, const char *video_id, const char *title)
 {
     size_t i;
-    if (!worker || !video_id || strlen(video_id) != 11)
+    if (!worker || !video_id || !title || !title[0] ||
+        strlen(title) >= sizeof(worker->title) || strlen(video_id) != 11)
         return 0;
     for (i = 0; i < 11; ++i)
     {
@@ -40,6 +46,7 @@ int music_worker_start(MusicWorker *worker, const char *video_id)
     }
     memset(worker, 0, sizeof(*worker));
     memcpy(worker->video_id, video_id, 12);
+    strcpy(worker->title, title);
     InterlockedExchange(&worker->state, 1);
     worker->thread = CreateThread(NULL, 0, music_worker_thread, worker, 0, NULL);
     if (!worker->thread)
