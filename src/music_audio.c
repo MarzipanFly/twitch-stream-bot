@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <wchar.h>
 #include <windows.h>
 
 static int valid_video_id(const char *id)
@@ -73,5 +74,51 @@ int music_audio_prepare(const char *video_id, const char *directory,
         (attributes & FILE_ATTRIBUTE_DIRECTORY))
         return 0;
     strcpy(output_path, final_path);
+    return 1;
+}
+
+/* Windows Unicode rename: preserve Cyrillic, remove forbidden filename chars. */
+int music_audio_name_file(const char *downloaded_path, const char *title_utf8,
+                          const char *video_id, char *output_utf8, size_t capacity)
+{
+    wchar_t old_path[MAX_PATH], new_path[MAX_PATH];
+    wchar_t title[180], safe[180], directory[MAX_PATH];
+    wchar_t suffix[32];
+    DWORD n;
+    int count, i, j = 0;
+    size_t directory_length;
+    if (!downloaded_path || !title_utf8 || !valid_video_id(video_id) ||
+        !output_utf8 || capacity == 0) return 0;
+    output_utf8[0] = '\0';
+    n = GetFullPathNameW(L"music_cache", MAX_PATH, directory, NULL);
+    if (!n || n >= MAX_PATH) return 0;
+    directory_length = wcslen(directory);
+    if (directory_length + 1 >= MAX_PATH) return 0;
+    count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, title_utf8,
+                                -1, title, 180);
+    if (!count) return 0;
+    for (i = 0; title[i] && j < 110; ++i)
+    {
+        wchar_t ch = title[i];
+        if (ch < 32 || wcschr(L"\\/:*?\"<>|", ch)) ch = L'_';
+        safe[j++] = ch;
+    }
+    while (j && (safe[j - 1] == L' ' || safe[j - 1] == L'.')) --j;
+    if (!j) return 0;
+    safe[j] = 0;
+    swprintf(suffix, 32, L" [%hs].mp3", video_id);
+    if (swprintf(new_path, MAX_PATH, L"%ls\\%ls%ls",
+                 directory, safe, suffix) < 0) return 0;
+    if (!MultiByteToWideChar(CP_ACP, 0, downloaded_path, -1,
+                             old_path, MAX_PATH)) return 0;
+    if (!MoveFileW(old_path, new_path))
+    {
+        if (GetFileAttributesW(new_path) == INVALID_FILE_ATTRIBUTES)
+            return 0;
+        /* Same track was already cached with its readable name. */
+        DeleteFileW(old_path);
+    }
+    if (!WideCharToMultiByte(CP_UTF8, 0, new_path, -1, output_utf8,
+                             (int)capacity, NULL, NULL)) return 0;
     return 1;
 }
