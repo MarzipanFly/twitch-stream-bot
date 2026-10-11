@@ -58,39 +58,45 @@ static DWORD g_music_started_tick = 0;
 
 
 /* UTF-8 with BOM: OBS Text (GDI+) can read this file directly. */
-static void music_update_obs_text(const char *title)
+/* Two independent UTF-8 text sources allow separate OBS font styling. */
+static void music_write_obs_text(const char *destination, const char *value)
 {
-    const char *temporary = "obs_now_playing.txt.tmp";
-    const char *destination = "obs_now_playing.txt";
+    char temporary[128];
     const unsigned char bom[] = {0xEF, 0xBB, 0xBF};
-    FILE *file = fopen(temporary, "wb");
+    FILE *file;
+    int ok;
+    if (snprintf(temporary, sizeof(temporary), "%s.tmp", destination) >=
+        (int)sizeof(temporary))
+        return;
+    file = fopen(temporary, "wb");
     if (!file)
     {
-        log_warning("Could not write OBS now-playing text");
+        log_warning("Could not open OBS overlay text: %s", destination);
         return;
     }
-    {
-        int ok = fwrite(bom, 1, sizeof(bom), file) == sizeof(bom);
-        if (ok && title && title[0])
-        {
-            const char prefix[] = "\xE2\x99\xAB ";
-            ok = fwrite(prefix, 1, sizeof(prefix) - 1, file) == sizeof(prefix) - 1 &&
-                 fwrite(title, 1, strlen(title), file) == strlen(title);
-        }
-        if (fclose(file) != 0) ok = 0;
-        if (!ok)
-        {
-            DeleteFileA(temporary);
-            log_warning("Could not save OBS now-playing text");
-            return;
-        }
-    }
-    if (!MoveFileExA(temporary, destination,
-                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+    ok = fwrite(bom, 1, sizeof(bom), file) == sizeof(bom);
+    if (ok && value && value[0])
+        ok = fwrite(value, 1, strlen(value), file) == strlen(value);
+    if (fclose(file) != 0) ok = 0;
+    if (!ok || !MoveFileExA(temporary, destination,
+                            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
     {
         DeleteFileA(temporary);
-        log_warning("Could not replace OBS now-playing text");
+        log_warning("Could not update OBS overlay text: %s", destination);
     }
+}
+
+static void music_update_obs_text(const char *title, const char *requester)
+{
+    char label[320];
+    music_write_obs_text("obs_now_playing.txt", title);
+    if (title && title[0] && requester && requester[0])
+    {
+        snprintf(label, sizeof(label), "Заказал: %s", requester);
+        music_write_obs_text("obs_now_playing_requester.txt", label);
+    }
+    else
+        music_write_obs_text("obs_now_playing_requester.txt", NULL);
 }
 
 static int youtube_video_id(const char *url, char id[12])
@@ -2336,7 +2342,7 @@ static BotResult process_twitch_chat_notification(
                          g_music_current.title);
                 g_music_playback_started = 0;
                 g_music_current_valid = 0;
-                music_update_obs_text(NULL);
+                music_update_obs_text(NULL, NULL);
                 snprintf(response, sizeof(response),
                          "Трек пропущен. %s",
                          g_music_queue.count ? "Включаю следующий!" :
@@ -3840,7 +3846,7 @@ static BotResult run_bot_loop(
             {
                 g_music_playback_started = 0;
                 g_music_current_valid = 0;
-                music_update_obs_text(NULL);
+                music_update_obs_text(NULL, NULL);
                 log_info("OBS music finished; advancing queue");
             }
             else if (state_result != BOT_OK)
@@ -3898,7 +3904,7 @@ static BotResult run_bot_loop(
                             g_music_playback_started = 1;
                             g_music_current = finished;
                             g_music_current_valid = 1;
-                            music_update_obs_text(finished.title);
+                            music_update_obs_text(finished.title, finished.requester);
                             g_music_started_tick = GetTickCount();
                             g_music_last_status_check = GetTickCount();
                             log_info("Music playing in OBS: %s (requested by %s)",
@@ -4065,7 +4071,7 @@ int app_run(
 
 
     setup_console_utf8();
-    music_update_obs_text(NULL);
+    music_update_obs_text(NULL, NULL);
 
     command_cooldown_init();
     viewer_duel_init();
