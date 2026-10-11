@@ -20,14 +20,15 @@ void music_queue_init(MusicQueue *queue)
         memset(queue, 0, sizeof(*queue));
 }
 
-int music_queue_push(MusicQueue *queue, const char *track_id, const char *requester)
+int music_queue_push(MusicQueue *queue, const char *track_id, const char *requester, const char *title)
 {
     MusicTrack track;
     if (queue == NULL || queue->count >= MUSIC_QUEUE_CAPACITY)
         return 0;
     memset(&track, 0, sizeof(track));
     if (!copy_field(track.track_id, sizeof(track.track_id), track_id) ||
-        !copy_field(track.requester, sizeof(track.requester), requester))
+        !copy_field(track.requester, sizeof(track.requester), requester) ||
+        !copy_field(track.title, sizeof(track.title), title))
         return 0;
     queue->tracks[queue->count++] = track;
     return 1;
