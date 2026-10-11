@@ -2265,6 +2265,61 @@ static BotResult process_twitch_chat_notification(
     }
 
     if (chat_message.text[0] == config->bot.command_prefix &&
+        (strcmp(chat_message.text + 1, "скип") == 0 ||
+         strcmp(chat_message.text + 1, "skip") == 0))
+    {
+        /* Only the broadcaster can control the playback queue. */
+        if (chat_message.chatter_user_id[0] == '\0' ||
+            chat_message.broadcaster_user_id[0] == '\0' ||
+            strcmp(chat_message.chatter_user_id,
+                   chat_message.broadcaster_user_id) != 0)
+        {
+            snprintf(response, sizeof(response),
+                     "Пропускать песни может только стример.");
+        }
+        else if (!g_music_current_valid || !g_music_playback_started)
+        {
+            snprintf(response, sizeof(response), "Сейчас ничего не играет.");
+        }
+        else if (!config->obs.enabled)
+        {
+            snprintf(response, sizeof(response), "Подключение OBS отключено.");
+        }
+        else
+        {
+            ObsWebSocket obs = {0};
+            BotResult stop_result = obs_websocket_connect(&obs,
+                                                           config->obs.password);
+            if (stop_result == BOT_OK)
+                stop_result = obs_websocket_stop_media(&obs, "Bot_Music");
+            obs_websocket_close(&obs);
+            if (stop_result == BOT_OK)
+            {
+                log_info("Music skipped by %s: %s",
+                         chat_message.chatter_user_login,
+                         g_music_current.title);
+                g_music_playback_started = 0;
+                g_music_current_valid = 0;
+                snprintf(response, sizeof(response),
+                         "Трек пропущен. %s",
+                         g_music_queue.count ? "Включаю следующий!" :
+                                               "Очередь пуста.");
+            }
+            else
+            {
+                log_warning("Failed to skip music (OBS result=%d)",
+                            (int)stop_result);
+                snprintf(response, sizeof(response),
+                         "Не получилось пропустить трек: ошибка OBS.");
+            }
+        }
+        result = twitch_chat_send_message(&config->twitch, response);
+        if (result != BOT_OK)
+            log_warning("Music skip response failed (%d)", (int)result);
+        return BOT_OK;
+    }
+
+    if (chat_message.text[0] == config->bot.command_prefix &&
         strcmp(chat_message.text + 1, "трек") == 0)
     {
         if (g_music_current_valid)
