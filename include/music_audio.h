@@ -10,6 +10,9 @@
 int music_audio_prepare(const char *video_id, const char *directory,
                         char *output_path, size_t output_capacity);
 
+/* Return a cached readable MP3 path as UTF-8 without downloading. */
+int music_audio_find_cached(const char *video_id, char *output_utf8, size_t capacity);
+
 /* Rename to a readable Unicode title with a unique video-ID suffix.
  * Returns an absolute UTF-8 path suitable for OBS WebSocket JSON. */
 int music_audio_name_file(const char *downloaded_path, const char *title_utf8,
