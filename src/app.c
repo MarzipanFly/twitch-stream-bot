@@ -51,6 +51,8 @@ static MusicQueue g_music_queue;
 static MusicWorker g_music_worker;
 static int g_music_worker_active = 0;
 static int g_music_playback_started = 0;
+static MusicTrack g_music_current;
+static int g_music_current_valid = 0;
 static DWORD g_music_last_status_check = 0;
 static DWORD g_music_started_tick = 0;
 
@@ -2263,6 +2265,20 @@ static BotResult process_twitch_chat_notification(
     }
 
     if (chat_message.text[0] == config->bot.command_prefix &&
+        strcmp(chat_message.text + 1, "трек") == 0)
+    {
+        if (g_music_current_valid)
+            snprintf(response, sizeof(response), "Сейчас играет: %.160s. Заказал: %.45s",
+                     g_music_current.title, g_music_current.requester);
+        else
+            snprintf(response, sizeof(response), "Сейчас ничего не играет.");
+        result = twitch_chat_send_message(&config->twitch, response);
+        if (result != BOT_OK)
+            log_warning("Music current-track response failed (%d)", (int)result);
+        return BOT_OK;
+    }
+
+    if (chat_message.text[0] == config->bot.command_prefix &&
         strcmp(chat_message.text + 1, "очередь") == 0)
     {
         size_t i;
@@ -3731,6 +3747,7 @@ static BotResult run_bot_loop(
                 strcmp(media_state, "OBS_MEDIA_STATE_ENDED") == 0)
             {
                 g_music_playback_started = 0;
+                g_music_current_valid = 0;
                 log_info("OBS music finished; advancing queue");
             }
             else if (state_result != BOT_OK)
@@ -3744,7 +3761,7 @@ static BotResult run_bot_loop(
             {
                 MusicTrack next;
                 if (music_queue_peek(&g_music_queue, &next) &&
-                    music_worker_start(&g_music_worker, next.track_id))
+                    music_worker_start(&g_music_worker, next.track_id, next.title))
                 {
                     g_music_worker_active = 1;
                     log_info("Music download started: %s", next.track_id);
@@ -3754,7 +3771,7 @@ static BotResult run_bot_loop(
             }
             if (g_music_worker_active)
             {
-                char relative_path[MAX_PATH];
+                char relative_path[1024];
                 int state = music_worker_status(&g_music_worker,
                                                 relative_path,
                                                 sizeof(relative_path));
@@ -3768,11 +3785,10 @@ static BotResult run_bot_loop(
                         char absolute_path[MAX_PATH];
                         ObsWebSocket obs = {0};
                         BotResult playback_result = BOT_ERR_CONFIG;
-                        DWORD length = GetFullPathNameA(relative_path,
-                                        sizeof(absolute_path),
-                                        absolute_path, NULL);
-                        if (length > 0 && length < sizeof(absolute_path))
+                        /* Worker returns absolute UTF-8 path, including Cyrillic. */
+                        if (strlen(relative_path) < sizeof(absolute_path))
                         {
+                            strcpy(absolute_path, relative_path);
                             playback_result = obs_websocket_connect(
                                 &obs, config->obs.password);
                             if (playback_result == BOT_OK)
@@ -3787,6 +3803,8 @@ static BotResult run_bot_loop(
                         {
                             music_queue_pop(&g_music_queue, &finished);
                             g_music_playback_started = 1;
+                            g_music_current = finished;
+                            g_music_current_valid = 1;
                             g_music_started_tick = GetTickCount();
                             g_music_last_status_check = GetTickCount();
                             log_info("Music playing in OBS: %s (requested by %s)",
