@@ -485,3 +485,30 @@ BotResult obs_websocket_set_media_file(ObsWebSocket *client, const char *input_n
     return obs_websocket_request(client, "SetInputSettings", request,
                                  response, sizeof(response));
 }
+
+BotResult obs_websocket_get_media_state(ObsWebSocket *client, const char *input_name,
+                                          char *state, size_t capacity)
+{
+    char quoted_name[256], request[320], response[4096];
+    cJSON *root;
+    const cJSON *value;
+    BotResult result;
+    size_t length;
+    if (!state || capacity == 0 || !json_quote(input_name, quoted_name, sizeof(quoted_name)))
+        return BOT_ERR_CONFIG;
+    state[0] = '\0';
+    snprintf(request, sizeof(request), "{\"inputName\":%s}", quoted_name);
+    result = obs_websocket_request(client, "GetMediaInputStatus", request,
+                                   response, sizeof(response));
+    if (result != BOT_OK) return result;
+    root = cJSON_Parse(response);
+    if (!root) return BOT_ERR_JSON;
+    value = cJSON_GetObjectItemCaseSensitive(root, "mediaState");
+    if (!cJSON_IsString(value) || !value->valuestring ||
+        (length = strlen(value->valuestring)) >= capacity)
+        result = BOT_ERR_JSON;
+    else
+        memcpy(state, value->valuestring, length + 1);
+    cJSON_Delete(root);
+    return result;
+}
