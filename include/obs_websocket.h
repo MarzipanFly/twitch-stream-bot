@@ -32,6 +32,8 @@ BotResult obs_websocket_set_scene(ObsWebSocket *client, const char *scene_name);
 BotResult obs_websocket_restart_media(ObsWebSocket *client, const char *input_name);
 BotResult obs_websocket_set_input_mute(ObsWebSocket *client, const char *input_name, int muted);
 BotResult obs_websocket_set_media_file(ObsWebSocket *client, const char *input_name, const char *absolute_path);
+BotResult obs_websocket_get_media_state(ObsWebSocket *client, const char *input_name,
+                                          char *state, size_t capacity);
 void obs_websocket_close(ObsWebSocket *client);
 
 #endif
