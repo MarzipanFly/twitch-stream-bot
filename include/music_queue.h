@@ -6,11 +6,13 @@
 #define MUSIC_QUEUE_CAPACITY 32
 #define MUSIC_TRACK_ID_SIZE 128
 #define MUSIC_REQUESTER_SIZE 64
+#define MUSIC_TITLE_SIZE 256
 
 typedef struct
 {
     char track_id[MUSIC_TRACK_ID_SIZE];
     char requester[MUSIC_REQUESTER_SIZE];
+    char title[MUSIC_TITLE_SIZE];
 } MusicTrack;
 
 typedef struct
@@ -20,7 +22,7 @@ typedef struct
 } MusicQueue;
 
 void music_queue_init(MusicQueue *queue);
-int music_queue_push(MusicQueue *queue, const char *track_id, const char *requester);
+int music_queue_push(MusicQueue *queue, const char *track_id, const char *requester, const char *title);
 int music_queue_pop(MusicQueue *queue, MusicTrack *out_track);
 int music_queue_peek(const MusicQueue *queue, MusicTrack *out_track);
 size_t music_queue_size(const MusicQueue *queue);
