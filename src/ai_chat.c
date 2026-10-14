@@ -27,7 +27,7 @@ typedef struct
 typedef struct
 {
     char user_id[TWITCH_EVENTSUB_ID_SIZE];
-    ULONGLONG last_tick;
+    DWORD last_tick;
 } AiCooldown;
 
 typedef struct
@@ -306,7 +306,7 @@ AiChatStatus ai_chat_enqueue(const TwitchChatMessage *message,
                              const char *question,
                              const TwitchConfig *twitch)
 {
-    ULONGLONG now;
+    DWORD now;
     size_t i, slot = AI_COOLDOWN_CAPACITY;
     AiJob *job;
     if (!g_ai.started) return AI_CHAT_DISABLED;
@@ -315,7 +315,7 @@ AiChatStatus ai_chat_enqueue(const TwitchChatMessage *message,
         !message->chatter_user_login[0] || !question[0])
         return AI_CHAT_INVALID;
     if (strlen(question) > AI_QUESTION_BYTES) return AI_CHAT_TOO_LONG;
-    now = GetTickCount64();
+    now = GetTickCount();
     EnterCriticalSection(&g_ai.lock);
     if (g_ai.stopping)
     {
@@ -328,7 +328,7 @@ AiChatStatus ai_chat_enqueue(const TwitchChatMessage *message,
                    message->chatter_user_id) == 0)
         {
             slot = i;
-            if (now - g_ai.cooldowns[i].last_tick < g_ai.cooldown_ms)
+            if ((DWORD)(now - g_ai.cooldowns[i].last_tick) < g_ai.cooldown_ms)
             {
                 LeaveCriticalSection(&g_ai.lock);
                 return AI_CHAT_COOLDOWN;
