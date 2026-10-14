@@ -84,43 +84,69 @@ static void clean_reply(const char *source, char *out, size_t cap)
     out[used] = '\0';
 }
 
+/* Encode an untrusted UTF-8 string as JSON string contents (no quotes). */
+static char *json_escape(const char *source)
+{
+    size_t length, i, used = 0;
+    char *out;
+    if (!source) return NULL;
+    length = strlen(source);
+    if (length > 4096) return NULL;
+    out = (char *)malloc(length * 6 + 1);
+    if (!out) return NULL;
+    for (i = 0; i < length; ++i)
+    {
+        unsigned char ch = (unsigned char)source[i];
+        if (ch == '"' || ch == '\\')
+        {
+            out[used++] = '\\';
+            out[used++] = (char)ch;
+        }
+        else if (ch < 0x20)
+        {
+            int n = snprintf(out + used, length * 6 + 1 - used,
+                             "\\u%04x", (unsigned int)ch);
+            if (n != 6) { free(out); return NULL; }
+            used += 6;
+        }
+        else
+            out[used++] = (char)ch;
+    }
+    out[used] = '\0';
+    return out;
+}
+
 /* Direct HTTP, deliberately bypassing proxy/VPN settings for 127.0.0.1. */
 static int ollama_generate(const char *model, const AiJob *job,
                            char *answer, size_t answer_cap)
 {
     HINTERNET session = NULL, connection = NULL, request = NULL;
-    cJSON *root = NULL, *messages = NULL, *message = NULL, *options = NULL;
     cJSON *parsed = NULL, *response_message, *content;
     char *payload = NULL, *received = NULL;
+    char *quoted_model = NULL, *quoted_prompt = NULL;
     char prompt[750];
     DWORD status = 0, status_size = sizeof(status);
-    size_t total = 0;
+    size_t total = 0, payload_size;
     int ok = 0;
     if (!model || !job || !answer || !answer_cap) return 0;
     answer[0] = '\0';
     snprintf(prompt, sizeof(prompt),
              "Зритель %s спрашивает: %s\nОтветь кратко, по-русски, одной репликой для Twitch-чата.",
              job->login, job->question);
-    root = cJSON_CreateObject();
-    messages = cJSON_CreateArray();
-    message = cJSON_CreateObject();
-    options = cJSON_CreateObject();
-    if (!root || !messages || !message || !options) goto cleanup;
-    cJSON_AddStringToObject(root, "model", model);
-    cJSON_AddBoolToObject(root, "stream", 0);
-    cJSON_AddBoolToObject(root, "think", 0);
-    cJSON_AddStringToObject(message, "role", "user");
-    cJSON_AddStringToObject(message, "content", prompt);
-    cJSON_AddItemToArray(messages, message);
-    message = NULL;
-    cJSON_AddItemToObject(root, "messages", messages);
-    messages = NULL;
-    cJSON_AddNumberToObject(options, "num_predict", 120);
-    cJSON_AddNumberToObject(options, "num_ctx", 2048);
-    cJSON_AddItemToObject(root, "options", options);
-    options = NULL;
-    payload = cJSON_PrintUnformatted(root);
-    if (!payload || strlen(payload) > 4096) goto cleanup;
+    quoted_model = json_escape(model);
+    quoted_prompt = json_escape(prompt);
+    if (!quoted_model || !quoted_prompt) goto cleanup;
+
+    /* cJSON in this repository implements parsing only, not JSON creation. */
+    payload_size = strlen(quoted_model) + strlen(quoted_prompt) + 180;
+    payload = (char *)malloc(payload_size);
+    if (!payload) goto cleanup;
+    if (snprintf(payload, payload_size,
+                 "{\"model\":\"%s\",\"stream\":false,\"think\":false,"
+                 "\"messages\":[{\"role\":\"user\",\"content\":\"%s\"}],"
+                 "\"options\":{\"num_predict\":120,\"num_ctx\":2048}}",
+                 quoted_model, quoted_prompt) >= (int)payload_size)
+        goto cleanup;
 
     session = WinHttpOpen(L"ApelsinBot-LocalAI/1.0",
                           WINHTTP_ACCESS_TYPE_NO_PROXY,
@@ -181,10 +207,8 @@ cleanup:
     cJSON_Delete(parsed);
     free(received);
     free(payload);
-    cJSON_Delete(root);
-    cJSON_Delete(options);
-    cJSON_Delete(message);
-    cJSON_Delete(messages);
+    free(quoted_model);
+    free(quoted_prompt);
     return ok;
 }
 
