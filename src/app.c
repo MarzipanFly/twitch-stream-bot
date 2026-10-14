@@ -24,6 +24,7 @@
 #include "viewer_rank.h"
 #include "music_queue.h"
 #include "music_worker.h"
+#include "ai_chat.h"
 #include "youtube_metadata.h"
 
 #include "token_store.h"
@@ -2263,6 +2264,52 @@ static BotResult process_twitch_chat_notification(
         chat_message.text
     );
 
+    /* Do not react to our own chat messages. */
+    if (chat_message.chatter_user_id[0] != '\0' &&
+        strcmp(chat_message.chatter_user_id, config->twitch.bot_user_id) == 0)
+        return BOT_OK;
+
+    /* Conversational local AI command is dispatched asynchronously. */
+    if (chat_message.text[0] == config->bot.command_prefix)
+    {
+        const char *name = chat_message.text + 1;
+        size_t keyword_len = strlen("бот");
+        if (strncmp(name, "бот", keyword_len) == 0 &&
+            (name[keyword_len] == '\0' ||
+             name[keyword_len] == ' ' || name[keyword_len] == '\t'))
+        {
+            const char *question = name + keyword_len;
+            AiChatStatus status;
+            while (*question == ' ' || *question == '\t') ++question;
+            if (!config->ai.enabled || !ai_chat_running())
+                snprintf(response, sizeof(response),
+                         "🍊 ИИ-чат пока отключён.");
+            else if (!*question)
+                snprintf(response, sizeof(response),
+                         "🍊 Спроси меня так: !бот как настроение?");
+            else
+            {
+                status = ai_chat_enqueue(&chat_message, question,
+                                         &config->twitch);
+                if (status == AI_CHAT_QUEUED || status == AI_CHAT_COOLDOWN)
+                    return BOT_OK; /* Do not spam cooldown notices. */
+                if (status == AI_CHAT_QUEUE_FULL)
+                    snprintf(response, sizeof(response),
+                             "🍊 У меня очередь вопросов, попробуй чуть позже.");
+                else if (status == AI_CHAT_TOO_LONG)
+                    snprintf(response, sizeof(response),
+                             "🍊 Слишком длинный вопрос (максимум 480 байт UTF-8).");
+                else
+                    snprintf(response, sizeof(response),
+                             "🍊 Пока не могу принять вопрос.");
+            }
+            result = twitch_chat_send_message(&config->twitch, response);
+            if (result != BOT_OK)
+                log_warning("AI command notice failed (%d)", (int)result);
+            return BOT_OK;
+        }
+    }
+
     /*
      * Configurable sound commands are checked before built-in commands.
      * Each sound has its own global cooldown.
@@ -3716,6 +3763,9 @@ static BotResult run_bot_loop(
         "Main bot loop started"
     );
 
+    if (config->ai.enabled && !ai_chat_start(&config->ai))
+        log_warning("Local AI worker could not start; !бот disabled");
+
     log_info(
         "Stream polling interval: %d seconds",
         STREAM_POLL_INTERVAL_SECONDS
@@ -4106,6 +4156,8 @@ static BotResult run_bot_loop(
 			);
 		}
     }
+
+    ai_chat_stop();
 
     twitch_eventsub_ws_close(
         &websocket

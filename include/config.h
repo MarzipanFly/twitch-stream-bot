@@ -73,6 +73,14 @@ typedef struct
     char password[CONFIG_STRING_SIZE];
 } ObsConfig;
 
+/* Local Ollama model; never requires an Internet API key. */
+typedef struct
+{
+    int enabled;
+    char model[128];
+    unsigned int cooldown_seconds;
+} AiConfig;
+
 /* Configurable OBS sounds, UTF-8 command names without prefix. */
 #define SOUND_MAX_COUNT 16
 #define SOUND_NAME_SIZE 64
@@ -92,6 +100,7 @@ typedef struct
 	DiscordConfig discord;
     BotConfig bot;
     ObsConfig obs;
+    AiConfig ai;
     SoundConfig sounds[SOUND_MAX_COUNT];
     size_t sound_count;
 

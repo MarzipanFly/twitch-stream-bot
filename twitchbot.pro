@@ -21,6 +21,7 @@ SOURCES += \
     src/music_queue.c \
     src/music_audio.c \
     src/music_worker.c \
+    src/ai_chat.c \
     src/music_library.c \
     src/youtube_metadata.c \
     src/obs_websocket.c \
@@ -51,6 +52,7 @@ HEADERS += \
     include/music_queue.h \
     include/music_audio.h \
     include/music_worker.h \
+    include/ai_chat.h \
     include/music_library.h \
     include/youtube_metadata.h \
     include/obs_websocket.h \

@@ -14,6 +14,7 @@ typedef enum
 	SECTION_DISCORD,
     SECTION_BOT,
     SECTION_OBS,
+    SECTION_AI,
     SECTION_SOUNDS
 
 } ConfigSection;
@@ -89,6 +90,7 @@ static ConfigSection parse_section(
 	}
 
     if (strcmp(line, "[obs]") == 0) return SECTION_OBS;
+    if (strcmp(line, "[ai]") == 0) return SECTION_AI;
     if (strcmp(line, "[sounds]") == 0) return SECTION_SOUNDS;
 
     if (strcmp(line, "[bot]") == 0)
@@ -258,6 +260,22 @@ static void parse_key_value(
                 copy_string(config->obs.password, sizeof(config->obs.password), value);
             break;
 
+        case SECTION_AI:
+            if (strcmp(key, "enabled") == 0)
+                config->ai.enabled =
+                    strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
+            else if (strcmp(key, "model") == 0)
+                copy_string(config->ai.model, sizeof(config->ai.model), value);
+            else if (strcmp(key, "cooldown_seconds") == 0)
+            {
+                unsigned int seconds = 0;
+                char extra;
+                if (sscanf(value, "%u %c", &seconds, &extra) == 1 &&
+                    seconds >= 5 && seconds <= 300)
+                    config->ai.cooldown_seconds = seconds;
+            }
+            break;
+
         case SECTION_SOUNDS:
         {
             /* command=OBS_input,cooldown_seconds,cost; legacy cost=0 */
@@ -363,6 +381,8 @@ BotResult config_load(
     );
 
     config->bot.command_prefix = '!';
+    snprintf(config->ai.model, sizeof(config->ai.model), "%s", "apelsinbot");
+    config->ai.cooldown_seconds = 30;
 
     file = fopen(filename, "r");
 
