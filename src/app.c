@@ -25,6 +25,7 @@
 #include "music_queue.h"
 #include "music_worker.h"
 #include "ai_chat.h"
+#include "achievements.h"
 #include "youtube_metadata.h"
 
 #include "token_store.h"
@@ -2035,6 +2036,16 @@ static BotResult connect_twitch_chat_listener(
         return result;
     }
 
+    /* Achievement subscriptions are optional; chat must keep working. */
+    result = twitch_eventsub_subscribe_follow(
+        &config->twitch, eventsub_session.session_id);
+    if (result != BOT_OK)
+        log_warning("Follow achievements unavailable (result=%d)", (int)result);
+    result = twitch_eventsub_subscribe_raid(
+        &config->twitch, eventsub_session.session_id);
+    if (result != BOT_OK)
+        log_warning("Raid achievements unavailable (result=%d)", (int)result);
+
     log_info(
         "Twitch chat listener started"
     );
@@ -2870,6 +2881,10 @@ static BotResult process_twitch_chat_notification(
 			}
 		}
 	}
+    else if (command.type == CHAT_COMMAND_ACHIEVEMENTS)
+    {
+        achievements_format(profile, response, sizeof(response));
+    }
     else if (command.type == CHAT_COMMAND_PROFILE)
     {
         if (profile == NULL)
@@ -3926,19 +3941,18 @@ static BotResult run_bot_loop(
                 }
                 else if (message_type == TWITCH_EVENTSUB_NOTIFICATION)
                 {
-                    chat_result = process_twitch_chat_notification(
-                        config,
-						json,
-						&chat_event
-                    );
+                    AchievementEventKind achievement_kind =
+                        achievements_event_kind(json);
+                    if (achievement_kind != ACHIEVEMENT_EVENT_NONE)
+                        chat_result = achievements_process_event(
+                            &config->twitch, json, achievement_kind);
+                    else
+                        chat_result = process_twitch_chat_notification(
+                            config, json, &chat_event);
 
                     if (chat_result != BOT_OK)
-                    {
-                        log_warning(
-                            "Failed to process Twitch chat message: %s",
-                            bot_result_to_string(chat_result)
-                        );
-                    }
+                        log_warning("Failed to process Twitch EventSub notification: %s",
+                                    bot_result_to_string(chat_result));
                 }
             }
         }

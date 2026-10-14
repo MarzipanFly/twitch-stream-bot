@@ -41,6 +41,16 @@ BotResult twitch_eventsub_subscribe_chat(
     const char *session_id
 );
 
+BotResult twitch_eventsub_subscribe_follow(
+    const TwitchConfig *config,
+    const char *session_id
+);
+
+BotResult twitch_eventsub_subscribe_raid(
+    const TwitchConfig *config,
+    const char *session_id
+);
+
 void twitch_eventsub_ws_close(
     TwitchEventSubWebSocket *client
 );

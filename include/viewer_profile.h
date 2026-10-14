@@ -35,6 +35,10 @@ typedef struct
     long long duel_wins;
     long long duel_losses;
 
+    /* Achievement state, persisted in viewers.dat V4. */
+    long long follow_rewarded; /* 500 oranges granted once per Twitch User ID */
+    long long raids_sent;      /* successful incoming raids */
+
 } ViewerProfile;
 
 

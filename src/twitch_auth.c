@@ -35,7 +35,7 @@ BotResult twitch_auth_request_device_code(const TwitchConfig *config, TwitchDevi
     memset(device, 0, sizeof(*device));
 
     snprintf(body, sizeof(body),
-             "client_id=%s&scopes=user%%3Aread%%3Achat%%20user%%3Awrite%%3Achat",
+             "client_id=%s&scopes=user%%3Aread%%3Achat%%20user%%3Awrite%%3Achat%%20moderator%%3Aread%%3Afollowers",
              config->client_id);
 
     log_info("Requesting Twitch device authorization code...");
@@ -114,7 +114,7 @@ BotResult twitch_auth_poll_token(const TwitchConfig *config, const TwitchDeviceC
     memset(token, 0, sizeof(*token));
 
     snprintf(body, sizeof(body),
-             "client_id=%s&scopes=user%%3Aread%%3Achat%%20user%%3Awrite%%3Achat"
+             "client_id=%s&scopes=user%%3Aread%%3Achat%%20user%%3Awrite%%3Achat%%20moderator%%3Aread%%3Afollowers"
              "&device_code=%s&grant_type=urn%%3Aietf%%3Aparams%%3Aoauth%%3Agrant-type%%3Adevice_code",
              config->client_id, device->device_code);
 

@@ -356,173 +356,131 @@ BotResult twitch_eventsub_ws_receive(
     }
 }
 
-BotResult twitch_eventsub_subscribe_chat(
+typedef enum
+{
+    SUB_CHAT,
+    SUB_FOLLOW,
+    SUB_RAID
+} EventSubTopic;
+
+static BotResult twitch_eventsub_subscribe_topic(
     const TwitchConfig *config,
-    const char *session_id
+    const char *session_id,
+    EventSubTopic topic
 )
 {
     HttpResponse response = {0};
     BotResult result;
     char body[2048];
+    char condition[600];
+    const char *type, *version;
     int written;
     wchar_t wide_token[2048];
     wchar_t wide_client_id[512];
     wchar_t headers[4096];
-    int convert_result;
 
-    if (config == NULL || session_id == NULL)
-    {
+    if (!config || !session_id || !session_id[0] ||
+        !config->broadcaster_id[0] || !config->bot_user_id[0] ||
+        !config->access_token[0] || !config->client_id[0])
         return BOT_ERR_CONFIG;
+
+    if (topic == SUB_CHAT)
+    {
+        type = "channel.chat.message";
+        version = "1";
+        written = snprintf(condition, sizeof(condition),
+                           "\"broadcaster_user_id\":\"%s\",\"user_id\":\"%s\"",
+                           config->broadcaster_id, config->bot_user_id);
+    }
+    else if (topic == SUB_FOLLOW)
+    {
+        type = "channel.follow";
+        version = "2";
+        written = snprintf(condition, sizeof(condition),
+                           "\"broadcaster_user_id\":\"%s\",\"moderator_user_id\":\"%s\"",
+                           config->broadcaster_id, config->bot_user_id);
+    }
+    else
+    {
+        type = "channel.raid";
+        version = "1";
+        written = snprintf(condition, sizeof(condition),
+                           "\"to_broadcaster_user_id\":\"%s\"",
+                           config->broadcaster_id);
     }
 
-    if (config->broadcaster_id[0] == '\0' ||
-        config->bot_user_id[0] == '\0' ||
-        config->access_token[0] == '\0' ||
-        config->client_id[0] == '\0' ||
-        session_id[0] == '\0')
-    {
-        log_error(
-            "Cannot create Twitch chat subscription: configuration is incomplete"
-        );
-
-        return BOT_ERR_CONFIG;
-    }
-
-    /*
-     * В проекте используется компактная версия cJSON без функций
-     * создания JSON. Поэтому тело запроса собираем через snprintf.
-     */
-    written = snprintf(
-        body,
-        sizeof(body),
-        "{"
-            "\"type\":\"channel.chat.message\","
-            "\"version\":\"1\","
-            "\"condition\":{"
-                "\"broadcaster_user_id\":\"%s\","
-                "\"user_id\":\"%s\""
-            "},"
-            "\"transport\":{"
-                "\"method\":\"websocket\","
-                "\"session_id\":\"%s\""
-            "}"
-        "}",
-        config->broadcaster_id,
-        config->bot_user_id,
-        session_id
-    );
-
-    if (written < 0 || (size_t)written >= sizeof(body))
-    {
-        log_error(
-            "Twitch EventSub subscription JSON is too large"
-        );
-
+    if (written < 0 || (size_t)written >= sizeof(condition))
         return BOT_ERR_JSON;
-    }
-
-    convert_result = MultiByteToWideChar(
-        CP_UTF8,
-        0,
-        config->access_token,
-        -1,
-        wide_token,
-        (int)(sizeof(wide_token) / sizeof(wide_token[0]))
+    written = snprintf(
+        body, sizeof(body),
+        "{\"type\":\"%s\",\"version\":\"%s\","
+        "\"condition\":{%s},"
+        "\"transport\":{\"method\":\"websocket\",\"session_id\":\"%s\"}}",
+        type, version, condition, session_id
     );
+    if (written < 0 || (size_t)written >= sizeof(body))
+        return BOT_ERR_JSON;
 
-    if (convert_result == 0)
-    {
-        log_error(
-            "Failed to convert Twitch access token"
-        );
-
+    if (!MultiByteToWideChar(CP_UTF8, 0, config->access_token, -1,
+                             wide_token, (int)(sizeof(wide_token) / sizeof(wide_token[0]))) ||
+        !MultiByteToWideChar(CP_UTF8, 0, config->client_id, -1,
+                             wide_client_id, (int)(sizeof(wide_client_id) / sizeof(wide_client_id[0]))))
         return BOT_ERR_AUTH;
-    }
 
-    convert_result = MultiByteToWideChar(
-        CP_UTF8,
-        0,
-        config->client_id,
-        -1,
-        wide_client_id,
-        (int)(sizeof(wide_client_id) / sizeof(wide_client_id[0]))
-    );
+    swprintf(headers, sizeof(headers) / sizeof(headers[0]),
+             L"Authorization: Bearer %ls\r\n"
+             L"Client-Id: %ls\r\n"
+             L"Content-Type: application/json\r\n",
+             wide_token, wide_client_id);
 
-    if (convert_result == 0)
-    {
-        log_error(
-            "Failed to convert Twitch Client ID"
-        );
-
-        return BOT_ERR_CONFIG;
-    }
-
-    swprintf(
-        headers,
-        sizeof(headers) / sizeof(headers[0]),
-        L"Authorization: Bearer %ls\r\n"
-        L"Client-Id: %ls\r\n"
-        L"Content-Type: application/json\r\n",
-        wide_token,
-        wide_client_id
-    );
-
-    log_info(
-        "Creating Twitch channel.chat.message subscription..."
-    );
-
-    result = http_post(
-        TWITCH_API_HOST,
-        TWITCH_EVENTSUB_SUBSCRIPTIONS_PATH,
-        headers,
-        body,
-        &response
-    );
-
+    log_info("Creating Twitch %s EventSub subscription...", type);
+    result = http_post(TWITCH_API_HOST, TWITCH_EVENTSUB_SUBSCRIPTIONS_PATH,
+                       headers, body, &response);
     if (result != BOT_OK)
     {
         http_response_free(&response);
         return result;
     }
-
-    log_debug(
-        "Twitch EventSub subscription HTTP status: %lu",
-        response.status_code
-    );
-
     if (response.status_code != 202)
     {
         unsigned long status_code = response.status_code;
-
-        log_error(
-            "Twitch EventSub subscription failed: HTTP %lu",
-            status_code
-        );
-
-        if (response.body != NULL && response.body[0] != '\0')
-        {
-            log_error(
-                "Twitch EventSub response: %s",
-                response.body
-            );
-        }
-
+        log_warning("Twitch %s subscription failed: HTTP %lu",
+                    type, status_code);
+        if (response.body && response.body[0])
+            log_warning("Twitch EventSub response: %s", response.body);
+        if (topic == SUB_FOLLOW && (status_code == 401 || status_code == 403))
+            log_warning("Follow events need moderator:read:followers; reauthorize the moderator bot account.");
         http_response_free(&response);
-
-        if (status_code == 401 || status_code == 403)
-        {
-            return BOT_ERR_AUTH;
-        }
-
-        return BOT_ERR_TWITCH;
+        return (status_code == 401 || status_code == 403)
+            ? BOT_ERR_AUTH : BOT_ERR_TWITCH;
     }
-
-    log_info(
-        "Twitch chat EventSub subscription created successfully"
-    );
-
+    log_info("Twitch %s EventSub subscription created", type);
     http_response_free(&response);
     return BOT_OK;
+}
+
+BotResult twitch_eventsub_subscribe_chat(
+    const TwitchConfig *config,
+    const char *session_id
+)
+{
+    return twitch_eventsub_subscribe_topic(config, session_id, SUB_CHAT);
+}
+
+BotResult twitch_eventsub_subscribe_follow(
+    const TwitchConfig *config,
+    const char *session_id
+)
+{
+    return twitch_eventsub_subscribe_topic(config, session_id, SUB_FOLLOW);
+}
+
+BotResult twitch_eventsub_subscribe_raid(
+    const TwitchConfig *config,
+    const char *session_id
+)
+{
+    return twitch_eventsub_subscribe_topic(config, session_id, SUB_RAID);
 }
 
 void twitch_eventsub_ws_close(

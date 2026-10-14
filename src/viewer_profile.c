@@ -10,7 +10,7 @@
 #define VIEWER_PROFILE_FILE "data/viewers.dat"
 #define VIEWER_PROFILE_TEMP_FILE "data/viewers.tmp"
 
-#define VIEWER_PROFILE_LINE_SIZE 512
+#define VIEWER_PROFILE_LINE_SIZE 1024
 
 
 static ViewerProfile g_profiles[
@@ -190,7 +190,7 @@ int viewer_profile_save(void)
      */
     fprintf(
         file,
-        "TWITCHBOT_VIEWERS_V3\n"
+        "TWITCHBOT_VIEWERS_V4\n"
     );
 
 
@@ -219,7 +219,7 @@ int viewer_profile_save(void)
         if (
             fprintf(
                 file,
-                "%s|%s|%s|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld\n",
+                "%s|%s|%s|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld\n",
                 profile.user_id,
                 profile.login,
                 profile.display_name,
@@ -233,7 +233,9 @@ int viewer_profile_save(void)
                 profile.slot_pairs,
                 profile.slot_losses,
                 profile.duel_wins,
-                profile.duel_losses
+                profile.duel_losses,
+                profile.follow_rewarded,
+                profile.raids_sent
             ) < 0)
         {
             fclose(file);
@@ -314,6 +316,8 @@ int viewer_profile_init(void)
     long long slot_losses;
     long long duel_wins;
     long long duel_losses;
+    long long follow_rewarded;
+    long long raids_sent;
     int file_version;
 
 
@@ -363,6 +367,11 @@ int viewer_profile_init(void)
 
 
     if (
+        strncmp(line, "TWITCHBOT_VIEWERS_V4", 20) == 0)
+    {
+        file_version = 4;
+    }
+    else if (
         strncmp(
             line,
             "TWITCHBOT_VIEWERS_V3",
@@ -425,9 +434,22 @@ int viewer_profile_init(void)
         slot_losses = 0;
         duel_wins = 0;
         duel_losses = 0;
+        follow_rewarded = 0;
+        raids_sent = 0;
 
-
-        if (file_version == 3)
+        if (file_version == 4)
+        {
+            if (sscanf(line,
+                       "%63[^|]|%63[^|]|%127[^|]|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld|%lld",
+                       user_id, login, display_name,
+                       &balance, &last_daily, &created_at,
+                       &daily_count, &coin_wins, &coin_losses,
+                       &slot_jackpots, &slot_pairs, &slot_losses,
+                       &duel_wins, &duel_losses,
+                       &follow_rewarded, &raids_sent) != 16)
+                continue;
+        }
+        else if (file_version == 3)
         {
             if (
                 sscanf(
@@ -541,6 +563,10 @@ int viewer_profile_init(void)
         g_profiles[g_profile_count].slot_losses = slot_losses;
         g_profiles[g_profile_count].duel_wins = duel_wins;
         g_profiles[g_profile_count].duel_losses = duel_losses;
+        g_profiles[g_profile_count].follow_rewarded =
+            follow_rewarded ? 1 : 0;
+        g_profiles[g_profile_count].raids_sent =
+            raids_sent > 0 ? raids_sent : 0;
 
         /*
          * Старые V1/V2 не содержали дату создания профиля.
@@ -566,7 +592,7 @@ int viewer_profile_init(void)
      * следующий перезапуск даже без игровой команды.
      */
     if (
-        file_version < 3 &&
+        file_version < 4 &&
         !viewer_profile_save())
     {
         return 0;
