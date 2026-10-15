@@ -2298,6 +2298,17 @@ static BotResult process_twitch_chat_notification(
             else if (!*question)
                 snprintf(response, sizeof(response),
                          "🍊 Спроси меня так: !бот как настроение?");
+            else if (strcmp(question, "сброс") == 0 ||
+                     strcmp(question, "забудь") == 0)
+            {
+                if (ai_chat_forget(chat_message.chatter_user_id))
+                    snprintf(response, sizeof(response),
+                             "@%.40s 🍊 Историю нашего диалога очистил. Начнём с чистого листа!",
+                             chat_message.chatter_user_login);
+                else
+                    snprintf(response, sizeof(response),
+                             "🍊 Не удалось очистить историю. Попробуй позже.");
+            }
             else
             {
                 status = ai_chat_enqueue(&chat_message, question,

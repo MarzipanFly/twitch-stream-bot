@@ -19,6 +19,8 @@ int ai_chat_start(const AiConfig *config);
 AiChatStatus ai_chat_enqueue(const TwitchChatMessage *message,
                              const char *question,
                              const TwitchConfig *twitch);
+/* Remove one user's dialogue memory and queued messages without disk writes. */
+int ai_chat_forget(const char *user_id);
 void ai_chat_stop(void);
 int ai_chat_running(void);
 
