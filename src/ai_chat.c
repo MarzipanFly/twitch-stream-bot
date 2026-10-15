@@ -2,6 +2,7 @@
 #include "logger.h"
 #include "twitch_chat.h"
 #include "cJSON.h"
+#include "ai_knowledge.h"
 
 #include <windows.h>
 #include <winhttp.h>
@@ -298,6 +299,23 @@ static int ollama_generate(const char *model, const AiJob *job,
     if (!append_chat_message(payload, AI_PAYLOAD_CAPACITY, &used,
                              &message_count, "system", system_prompt))
         goto cleanup;
+    /* Curated offline facts take precedence over the model's past mistakes. */
+    {
+        int create_topic = ai_knowledge_is_create_topic(job->question);
+        if (!create_topic)
+            for (i = 0; i < history->count; ++i)
+                if (ai_knowledge_is_create_topic(history->turns[i].question) ||
+                    ai_knowledge_is_create_topic(history->turns[i].answer))
+                {
+                    create_topic = 1;
+                    break;
+                }
+        if (create_topic &&
+            !append_chat_message(payload, AI_PAYLOAD_CAPACITY, &used,
+                                 &message_count, "system",
+                                 ai_knowledge_create_facts()))
+            goto cleanup;
+    }
     /* Ordered user/assistant pairs from this viewer only. */
     for (i = 0; i < history->count; ++i)
     {
@@ -426,8 +444,16 @@ static DWORD WINAPI ai_worker_thread(LPVOID unused)
             log_debug("AI context: viewer=%s, previous exchanges=%u",
                       job.login, (unsigned int)history.count);
 
-            generated = ollama_generate(g_ai.model, &job, &history,
-                                        answer, sizeof(answer));
+            /* Known factual traps are answered from the offline knowledge base.
+             * Other questions still go to the conversational local model. */
+            if (ai_knowledge_direct_answer(job.question, answer, sizeof(answer)))
+            {
+                log_info("AI factual answer served from local Create knowledge");
+                generated = 1;
+            }
+            else
+                generated = ollama_generate(g_ai.model, &job, &history,
+                                            answer, sizeof(answer));
             EnterCriticalSection(&g_ai.lock);
             stopping = g_ai.stopping;
             still_current = memory_revision_valid_locked(job.user_id, revision);
