@@ -81,6 +81,14 @@ typedef struct
     unsigned int cooldown_seconds;
 } AiConfig;
 
+/* Periodic social links announcement in the Twitch chat. */
+typedef struct
+{
+    int enabled;
+    unsigned int min_minutes;
+    unsigned int max_minutes;
+} PromoConfig;
+
 /* Configurable OBS sounds, UTF-8 command names without prefix. */
 #define SOUND_MAX_COUNT 16
 #define SOUND_NAME_SIZE 64
@@ -101,6 +109,7 @@ typedef struct
     BotConfig bot;
     ObsConfig obs;
     AiConfig ai;
+    PromoConfig promo;
     SoundConfig sounds[SOUND_MAX_COUNT];
     size_t sound_count;
 

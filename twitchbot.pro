@@ -22,6 +22,7 @@ SOURCES += \
     src/music_audio.c \
     src/music_worker.c \
     src/ai_chat.c \
+    src/chat_promo.c \
     src/ai_knowledge.c \
     src/achievements.c \
     src/music_library.c \
@@ -55,6 +56,7 @@ HEADERS += \
     include/music_audio.h \
     include/music_worker.h \
     include/ai_chat.h \
+    include/chat_promo.h \
     include/ai_knowledge.h \
     include/achievements.h \
     include/music_library.h \

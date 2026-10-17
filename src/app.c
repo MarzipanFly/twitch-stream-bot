@@ -25,6 +25,7 @@
 #include "music_queue.h"
 #include "music_worker.h"
 #include "ai_chat.h"
+#include "chat_promo.h"
 #include "achievements.h"
 #include "youtube_metadata.h"
 
@@ -3731,6 +3732,7 @@ static BotResult run_bot_loop(
     TwitchEventSubWebSocket websocket = {0};
     TwitchEventSubMessageType message_type;
     TwitchStream initial_stream = {0};
+    ChatPromo chat_promo = {0};
 
     BotResult result;
     BotResult chat_result;
@@ -3810,6 +3812,12 @@ static BotResult run_bot_loop(
 
     last_token_validation =
         GetTickCount();
+
+    chat_promo_init(&chat_promo,
+                    (uint32_t)time(NULL) ^ (uint32_t)GetTickCount());
+    log_info("Social links promo: %s, interval %u-%u minutes (online only)",
+             config->promo.enabled ? "enabled" : "disabled",
+             config->promo.min_minutes, config->promo.max_minutes);
 
 	chat_event_init(
 			&chat_event
@@ -4130,6 +4138,38 @@ static BotResult run_bot_loop(
             last_stream_check =
                 now;
         }
+
+        /*
+         * ----------------------------------------------------
+         * AUTOMATIC TG / DISCORD LINKS (ONLINE ONLY)
+         * ----------------------------------------------------
+         *
+         * Uses the same EventSub keepalive-driven loop as stream polling.
+         * No additional thread, timer handle or extra Twitch auth is needed.
+         */
+        if (chat_promo_due(&chat_promo, &config->promo, (uint32_t)now,
+                           previous_live_state, chat_connected))
+        {
+            char promo_message[500];
+            if (chat_promo_build_message(&config->telegram, &config->discord,
+                                         promo_message, sizeof(promo_message)))
+            {
+                BotResult promo_result = twitch_chat_send_message(
+                    &config->twitch, promo_message);
+                if (promo_result == BOT_OK)
+                    log_info("Automatic TG/Discord links posted to Twitch chat");
+                else
+                    log_warning("Automatic social links post failed: %s",
+                                bot_result_to_string(promo_result));
+            }
+            else
+                log_warning("Social links promo skipped: valid Telegram/Discord URLs missing or too long");
+
+            /* Always rearm, even after API failure, to prevent rapid retries. */
+            chat_promo_schedule_next(&chat_promo, &config->promo,
+                                      (uint32_t)GetTickCount());
+        }
+
 		/*
 		 * ----------------------------------------------------
 		 * RANDOM CHAT EVENT

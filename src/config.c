@@ -15,6 +15,7 @@ typedef enum
     SECTION_BOT,
     SECTION_OBS,
     SECTION_AI,
+    SECTION_PROMO,
     SECTION_SOUNDS
 
 } ConfigSection;
@@ -91,6 +92,7 @@ static ConfigSection parse_section(
 
     if (strcmp(line, "[obs]") == 0) return SECTION_OBS;
     if (strcmp(line, "[ai]") == 0) return SECTION_AI;
+    if (strcmp(line, "[promo]") == 0) return SECTION_PROMO;
     if (strcmp(line, "[sounds]") == 0) return SECTION_SOUNDS;
 
     if (strcmp(line, "[bot]") == 0)
@@ -276,6 +278,27 @@ static void parse_key_value(
             }
             break;
 
+        case SECTION_PROMO:
+            if (strcmp(key, "enabled") == 0)
+                config->promo.enabled =
+                    strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
+            else if (strcmp(key, "min_minutes") == 0 ||
+                     strcmp(key, "max_minutes") == 0)
+            {
+                unsigned int minutes = 0;
+                char extra;
+                /* Avoid accidental zero/overflow/tight chat spam. */
+                if (sscanf(value, "%u %c", &minutes, &extra) == 1 &&
+                    minutes >= 1 && minutes <= 60)
+                {
+                    if (strcmp(key, "min_minutes") == 0)
+                        config->promo.min_minutes = minutes;
+                    else
+                        config->promo.max_minutes = minutes;
+                }
+            }
+            break;
+
         case SECTION_SOUNDS:
         {
             /* command=OBS_input,cooldown_seconds,cost; legacy cost=0 */
@@ -383,6 +406,9 @@ BotResult config_load(
     config->bot.command_prefix = '!';
     snprintf(config->ai.model, sizeof(config->ai.model), "%s", "apelsinbot");
     config->ai.cooldown_seconds = 30;
+    config->promo.enabled = 1;
+    config->promo.min_minutes = 5;
+    config->promo.max_minutes = 10;
 
     file = fopen(filename, "r");
 
@@ -453,6 +479,14 @@ BotResult config_load(
     }
 
     fclose(file);
+
+    /* Invalid bounds must never result in an overly frequent announcement. */
+    if (config->promo.min_minutes > config->promo.max_minutes)
+    {
+        log_warning("Invalid [promo] interval: min_minutes > max_minutes; using 5-10 minutes");
+        config->promo.min_minutes = 5;
+        config->promo.max_minutes = 10;
+    }
 
     return BOT_OK;
 }
