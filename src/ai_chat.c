@@ -5,6 +5,7 @@
 #include "ai_knowledge.h"
 #include "ai_text.h"
 #include "ai_retrieval.h"
+#include "ai_semantic.h"
 
 #include <windows.h>
 #include <winhttp.h>
@@ -420,7 +421,11 @@ static int ollama_generate(const char *model, const AiJob *job,
             goto cleanup;
     }
     /* Retrieve only locally reviewed facts; no external network requests. */
-    if (ai_retrieval_search(job->question,
+    if (ai_semantic_search(job->question,
+                            history->count ?
+                            history->turns[history->count - 1].question : "",
+                            retrieved, sizeof(retrieved)) ||
+        ai_retrieval_search(job->question,
                             history->count ?
                             history->turns[history->count - 1].question : "",
                             retrieved, sizeof(retrieved)))
@@ -666,6 +671,10 @@ int ai_chat_start(const AiConfig *config)
     snprintf(g_ai.model, sizeof(g_ai.model), "%s",
              config->model[0] ? config->model : "apelsinbot");
     g_ai.cooldown_ms = config->cooldown_seconds * 1000U;
+    ai_semantic_init(config->semantic_enabled, config->semantic_model);
+    log_info("Semantic knowledge search: %s (model=%s)",
+             config->semantic_enabled ? "enabled" : "disabled",
+             config->semantic_model[0] ? config->semantic_model : "not configured");
     InitializeCriticalSection(&g_ai.lock);
     persist_load_locked();
     g_ai.wake = CreateEventA(NULL, TRUE, FALSE, NULL);

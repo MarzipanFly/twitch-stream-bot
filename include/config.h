@@ -79,6 +79,8 @@ typedef struct
     int enabled;
     char model[128];
     unsigned int cooldown_seconds;
+    int semantic_enabled; /* Optional Ollama embedding search. */
+    char semantic_model[128];
 } AiConfig;
 
 /* Periodic social links announcement in the Twitch chat. */

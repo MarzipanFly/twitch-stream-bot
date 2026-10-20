@@ -268,6 +268,12 @@ static void parse_key_value(
                     strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
             else if (strcmp(key, "model") == 0)
                 copy_string(config->ai.model, sizeof(config->ai.model), value);
+            else if (strcmp(key, "semantic_enabled") == 0)
+                config->ai.semantic_enabled =
+                    strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
+            else if (strcmp(key, "semantic_model") == 0)
+                copy_string(config->ai.semantic_model,
+                            sizeof(config->ai.semantic_model), value);
             else if (strcmp(key, "cooldown_seconds") == 0)
             {
                 unsigned int seconds = 0;
@@ -406,6 +412,9 @@ BotResult config_load(
     config->bot.command_prefix = '!';
     snprintf(config->ai.model, sizeof(config->ai.model), "%s", "apelsinbot");
     config->ai.cooldown_seconds = 30;
+    config->ai.semantic_enabled = 0;
+    snprintf(config->ai.semantic_model, sizeof(config->ai.semantic_model),
+             "%s", "qwen3-embedding:0.6b");
     config->promo.enabled = 1;
     config->promo.min_minutes = 5;
     config->promo.max_minutes = 10;
