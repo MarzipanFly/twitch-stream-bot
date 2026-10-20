@@ -2299,6 +2299,27 @@ static BotResult process_twitch_chat_notification(
             else if (!*question)
                 snprintf(response, sizeof(response),
                          "🍊 Спроси меня так: !бот как настроение?");
+            else if (strcmp(question, "память вкл") == 0)
+            {
+                if (ai_chat_persistent_set(chat_message.chatter_user_id, 1))
+                    snprintf(response, sizeof(response),
+                             "@%.40s 🍊 Долгая память включена. Буду помнить до 4 последних диалогов между стримами (не более 30 дней). Отключить: !бот память выкл",
+                             chat_message.chatter_user_login);
+                else
+                    snprintf(response, sizeof(response),
+                             "🍊 Не удалось включить память. Проверь локальное хранилище.");
+            }
+            else if (strcmp(question, "память выкл") == 0 ||
+                     strcmp(question, "удали память") == 0)
+            {
+                if (ai_chat_persistent_set(chat_message.chatter_user_id, 0))
+                    snprintf(response, sizeof(response),
+                             "@%.40s 🍊 Долговременная память отключена, сохранённая история удалена.",
+                             chat_message.chatter_user_login);
+                else
+                    snprintf(response, sizeof(response),
+                             "🍊 Не удалось удалить локальную память. Сообщи модератору.");
+            }
             else if (strcmp(question, "сброс") == 0 ||
                      strcmp(question, "забудь") == 0)
             {
@@ -3702,6 +3723,7 @@ static BotResult update_stream_state(
 
     *previous_live_state =
         current_stream.is_live;
+    ai_chat_set_stream_context(&current_stream);
 
     return BOT_OK;
 }
@@ -3793,6 +3815,7 @@ static BotResult run_bot_loop(
 
     if (config->ai.enabled && !ai_chat_start(&config->ai))
         log_warning("Local AI worker could not start; !бот disabled");
+    ai_chat_set_stream_context(&initial_stream);
 
     log_info(
         "Stream polling interval: %d seconds",
@@ -4082,6 +4105,8 @@ static BotResult run_bot_loop(
             }
         }
 
+        ai_chat_set_current_track(
+            g_music_current_valid ? g_music_current.title : NULL);
         now = GetTickCount();
 
         /*

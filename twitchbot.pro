@@ -23,6 +23,7 @@ SOURCES += \
     src/music_worker.c \
     src/ai_chat.c \
     src/ai_text.c \
+    src/ai_retrieval.c \
     src/chat_promo.c \
     src/ai_knowledge.c \
     src/achievements.c \
@@ -58,6 +59,7 @@ HEADERS += \
     include/music_worker.h \
     include/ai_chat.h \
     include/ai_text.h \
+    include/ai_retrieval.h \
     include/chat_promo.h \
     include/ai_knowledge.h \
     include/achievements.h \

@@ -3,6 +3,7 @@
 
 #include "config.h"
 #include "twitch_eventsub.h"
+#include "twitch_stream.h"
 
 typedef enum
 {
@@ -19,8 +20,13 @@ int ai_chat_start(const AiConfig *config);
 AiChatStatus ai_chat_enqueue(const TwitchChatMessage *message,
                              const char *question,
                              const TwitchConfig *twitch);
-/* Remove one user's dialogue memory and queued messages without disk writes. */
+/* Reset recent history (and update the local file if opted in). */
 int ai_chat_forget(const char *user_id);
+/* Explicit per-viewer opt-in/opt-out for memory across streams.
+ * Disabling deletes stored turns for this Twitch user ID. */
+int ai_chat_persistent_set(const char *user_id, int enable);
+void ai_chat_set_stream_context(const TwitchStream *stream);
+void ai_chat_set_current_track(const char *title);
 void ai_chat_stop(void);
 int ai_chat_running(void);
 
