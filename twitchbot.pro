@@ -28,6 +28,7 @@ SOURCES += \
     src/ai_semantic.c \
     src/chat_promo.c \
     src/ai_knowledge.c \
+    src/ai_tactics.c \
     src/achievements.c \
     src/music_library.c \
     src/youtube_metadata.c \
@@ -66,6 +67,7 @@ HEADERS += \
     include/ai_semantic.h \
     include/chat_promo.h \
     include/ai_knowledge.h \
+    include/ai_tactics.h \
     include/achievements.h \
     include/music_library.h \
     include/youtube_metadata.h \

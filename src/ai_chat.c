@@ -6,6 +6,7 @@
 #include "ai_text.h"
 #include "ai_retrieval.h"
 #include "ai_semantic.h"
+#include "ai_tactics.h"
 
 #include <windows.h>
 #include <winhttp.h>
@@ -377,6 +378,14 @@ static int ollama_generate(const char *model, const AiJob *job,
         "Не придумывай сведения о стриме или других зрителях. "
         "Если информации не хватает, задай один конкретный уточняющий вопрос "
         "или предложи надёжный способ проверки. "
+        "Учитывай контекст матча из предыдущих сообщений того же зрителя: "
+        "схему соперника, счёт, минуту, направления атак и необходимость отыгрыша. "
+        "Если уступаешь после 70-й минуты, приоритет — создание моментов с разумным риском, "
+        "а не пассивное сохранение текущей обороны. "
+        "Вратаря нельзя выдвигать для контроля центра поля. "
+        "Не смешивай роль опорника с ролью вратаря. "
+        "Не предлагай трёх центральных защитников автоматически как ответ "
+        "на любые атаки через фланги. "
         "Для вопросов о тактике или расстановке называй конкретную существующую схему "
         "и объясняй когда и почему её применять, а не отрицай наличие тактик в игре. "
         "В EA SPORTS FC 26 существуют схемы, роли FC IQ и командные тактики. "
@@ -551,6 +560,8 @@ static DWORD WINAPI ai_worker_thread(LPVOID unused)
         {
             AiJob job;
             AiMemory history;
+            const char *previous_questions[AI_MEMORY_TURNS];
+            size_t previous_count = 0, prior_i;
             TwitchStream stream;
             char track[256];
             unsigned int revision;
@@ -588,12 +599,23 @@ static DWORD WINAPI ai_worker_thread(LPVOID unused)
             LeaveCriticalSection(&g_ai.lock);
             log_debug("AI context: viewer=%s, previous exchanges=%u",
                       job.login, (unsigned int)history.count);
+            previous_count = history.count < AI_MEMORY_TURNS ?
+                             history.count : AI_MEMORY_TURNS;
+            for (prior_i = 0; prior_i < previous_count; ++prior_i)
+                previous_questions[prior_i] = history.turns[prior_i].question;
 
             /* Known factual traps are answered from the offline knowledge base.
              * Other questions still go to the conversational local model. */
             if (ai_knowledge_direct_answer(job.question, answer, sizeof(answer)))
             {
                 log_info("AI vetted game answer served from local knowledge");
+                generated = 1;
+            }
+            else if (ai_tactics_reply(job.question, previous_questions,
+                                      previous_count, answer, sizeof(answer)))
+            {
+                log_info("AI situational FC tactical plan served (viewer=%s)",
+                         job.login);
                 generated = 1;
             }
             else
