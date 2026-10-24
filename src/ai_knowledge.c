@@ -131,6 +131,26 @@ int ai_knowledge_direct_answer(const char *question, char *answer, size_t capaci
                    "булыжника и обсидиана, но это не такой предмет. "
                    "Проверь список модов и JEI/EMI.";
     }
+    /* A commonly requested FC 26 tactic needs a concrete, usable answer.
+     * EA documents FC IQ formations/roles, while the choice of formation
+     * against high pressure is a coaching recommendation, not a game fact. */
+    else if ((strstr(lowered, "fifa") || strstr(lowered, "фифа") ||
+              strstr(lowered, "fc 26") || strstr(lowered, "fc26") ||
+              strstr(lowered, "ea fc") || strstr(lowered, "ea sports fc")) &&
+             (strstr(lowered, "прессинг") ||
+              strstr(lowered, "pressing") ||
+              strstr(lowered, "высокого давления")) &&
+             (strstr(lowered, "схем") || strstr(lowered, "расстанов") ||
+              strstr(lowered, "тактик") || strstr(lowered, "против")))
+    {
+        response = "Против высокого прессинга в FC 26 попробуй 4-2-3-1: "
+                   "два опорника дают страховку и варианты короткого паса, "
+                   "а крайние атакующие игроки — выход на фланги. "
+                   "Одного опорника оставь с оборонительной ролью, "
+                   "другого используй для начала атак. "
+                   "Если соперник перекрывает центр, переводи мяч на свободный фланг "
+                   "или за его высокую линию. Это стартовая тактика, не гарантированная мета.";
+    }
 
     if (!response) return 0;
     n = snprintf(answer, capacity, "%s", response);

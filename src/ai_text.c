@@ -52,6 +52,46 @@ void ai_text_clean_reply(const char *source, char *out, size_t capacity)
     out[used] = '\0';
 }
 
+/* Avoid sending an unfinished trailing phrase to Twitch when Ollama
+ * hits its generation limit or the answer byte cap.
+ * Prefer the most recent complete sentence. */
+void ai_text_finish_reply(char *answer, size_t capacity)
+{
+    size_t length, i, complete = 0, word_end;
+    if (!answer || capacity < 5) return;
+    length = strlen(answer);
+    if (!length) return;
+    if (answer[length - 1] == '.' ||
+        answer[length - 1] == '!' ||
+        answer[length - 1] == '?')
+        return;
+
+    for (i = 0; i < length; ++i)
+    {
+        if ((answer[i] == '.' || answer[i] == '!' || answer[i] == '?') &&
+            (i + 1 == length || answer[i + 1] == ' '))
+            complete = i + 1;
+    }
+    /* Keep the reply's complete sentences; never drop the entire answer. */
+    if (complete >= 35)
+    {
+        answer[complete] = '\0';
+        return;
+    }
+    /* Single, unfinished sentence: avoid a cut-off word, and indicate
+     * explicitly that the answer may be incomplete. */
+    word_end = length;
+    while (word_end > 0 && answer[word_end - 1] != ' ')
+        --word_end;
+    if (word_end > 8 && word_end + 2 < capacity)
+    {
+        while (word_end > 0 && answer[word_end - 1] == ' ')
+            --word_end;
+        answer[word_end++] = '.';
+        answer[word_end] = '\0';
+    }
+}
+
 /* One Twitch message must remain under 500 bytes including @login and label. */
 int ai_text_next_part(const char *text, size_t *cursor,
                       char *part, size_t capacity, size_t max_bytes)

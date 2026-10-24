@@ -55,6 +55,17 @@ int main(void)
     assert(pieces == 2);
     assert(strcmp(combined, clean) == 0);
 
+    ai_text_clean_reply("FC 26: Начни с 4-2-3-1. Держи два опорника. А ещё поставь централ",
+                        clean, sizeof(clean));
+    ai_text_finish_reply(clean, sizeof(clean));
+    assert(strcmp(clean, "FC 26: Начни с 4-2-3-1. Держи два опорника.") == 0);
+    ai_text_clean_reply("Пробуй фланговую схе", clean, sizeof(clean));
+    ai_text_finish_reply(clean, sizeof(clean));
+    assert(strcmp(clean, "Пробуй фланговую.") == 0);
+    ai_text_clean_reply("Уже законченный ответ.", clean, sizeof(clean));
+    ai_text_finish_reply(clean, sizeof(clean));
+    assert(strcmp(clean, "Уже законченный ответ.") == 0);
+
     cursor = 0;
     assert(ai_text_next_part("Привет, мир!", &cursor, chunk, sizeof(chunk), 420));
     assert(!ai_text_next_part("Привет, мир!", &cursor, chunk, sizeof(chunk), 420));

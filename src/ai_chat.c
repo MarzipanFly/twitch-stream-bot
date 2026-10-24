@@ -377,6 +377,12 @@ static int ollama_generate(const char *model, const AiJob *job,
         "Не придумывай сведения о стриме или других зрителях. "
         "Если информации не хватает, задай один конкретный уточняющий вопрос "
         "или предложи надёжный способ проверки. "
+        "Для вопросов о тактике или расстановке называй конкретную существующую схему "
+        "и объясняй когда и почему её применять, а не отрицай наличие тактик в игре. "
+        "В EA SPORTS FC 26 существуют схемы, роли FC IQ и командные тактики. "
+        "Для вопросов о механиках игры используй конкретные данные из локального справочника, "
+        "если они доступны. Различай факт и рекомендацию. "
+        "Каждый ответ заканчивай полным предложением, не обрывай перечисления. "
         "Если вопрос простой, отвечай в 1–2 предложениях. "
         "Если просят объяснить или сравнить, дай 3–5 содержательных предложений, не обрывай мысль. "
         "Пиши обычным текстом без Markdown-разметки, без символов звёздочек для жирности и курсива. "
@@ -521,6 +527,7 @@ static int ollama_generate(const char *model, const AiJob *job,
     content = cJSON_GetObjectItemCaseSensitive(response_message, "content");
     if (!cJSON_IsString(content) || !content->valuestring) goto cleanup;
     ai_text_clean_reply(content->valuestring, answer, answer_cap);
+    ai_text_finish_reply(answer, answer_cap);
     ok = answer[0] != '\0';
 
 cleanup:
@@ -586,7 +593,7 @@ static DWORD WINAPI ai_worker_thread(LPVOID unused)
              * Other questions still go to the conversational local model. */
             if (ai_knowledge_direct_answer(job.question, answer, sizeof(answer)))
             {
-                log_info("AI factual answer served from local Create knowledge");
+                log_info("AI vetted game answer served from local knowledge");
                 generated = 1;
             }
             else

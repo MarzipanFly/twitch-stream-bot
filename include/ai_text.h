@@ -6,6 +6,8 @@
 /* Normalize LLM output for Twitch: remove Markdown emphasis, flatten
  * whitespace and keep complete UTF-8 codepoints. */
 void ai_text_clean_reply(const char *source, char *out, size_t capacity);
+/* Remove an incomplete final sentence after length/token truncation. */
+void ai_text_finish_reply(char *answer, size_t capacity);
 
 /* Copy the next bounded chunk of a cleaned UTF-8 reply.
  * Updates *cursor; returns nonzero if a chunk was produced.
