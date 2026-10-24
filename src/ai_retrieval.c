@@ -73,7 +73,17 @@ static size_t make_tokens(const char *question, const char *prev,
         start = i;
         while (lowered[i] && word_char((unsigned char)lowered[i])) ++i;
         len = i - start;
-        if (len < 4 || len >= 96) continue;
+        /* Preserve short technical terms used in game questions, e.g.
+         * EMF 5, AE2, ACC, JEI, RPM. Regular short words remain excluded. */
+        if (len >= 96 ||
+            (len < 4 &&
+             !(len == 3 && (!strncmp(lowered + start, "emf", 3) ||
+                           !strncmp(lowered + start, "ae2", 3) ||
+                           !strncmp(lowered + start, "acc", 3) ||
+                           !strncmp(lowered + start, "jei", 3) ||
+                           !strncmp(lowered + start, "emi", 3) ||
+                           !strncmp(lowered + start, "rpm", 3)))))
+            continue;
         memcpy(tokens[n], lowered + start, len);
         tokens[n][len] = '\0';
         if (stop_word(tokens[n])) continue;
