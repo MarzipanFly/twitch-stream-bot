@@ -1,4 +1,5 @@
 #include "ai_semantic.h"
+#include "ai_game_scope.h"
 #include "logger.h"
 #include "cJSON.h"
 
@@ -22,6 +23,7 @@ typedef struct
     char prompt[SEM_MAX_LINE];
     char cite[SEM_MAX_LINE];
     float vector[SEM_MAX_DIM];
+    AiGameScope game;
 } SemanticDocument;
 
 typedef struct
@@ -109,6 +111,7 @@ static size_t load_documents(const char *filename)
                      title, facts, source);
         if (a < 0 || b < 0 || a >= SEM_MAX_LINE || b >= SEM_MAX_LINE)
             continue;
+        g_sem.docs[count].game = ai_game_scope_from_title(title);
         ++count;
     }
     fclose(file);
@@ -325,6 +328,7 @@ int ai_semantic_search(const char *question, const char *previous_question,
     float query_vector[SEM_MAX_DIM];
     size_t dim = 0, i, best_index = 0, second_index = 0;
     double first = -1, second = -1;
+    AiGameScope scope;
     int n;
     if (!output || !capacity) return 0;
     output[0] = '\0';
@@ -333,6 +337,9 @@ int ai_semantic_search(const char *question, const char *previous_question,
     if (g_sem.failed && (DWORD)(now - g_sem.last_failure) < SEM_RETRY_MS)
         return 0;
     if (!build_index()) goto failure;
+    scope = ai_game_scope_from_text(question);
+    if (scope == AI_GAME_NONE)
+        scope = ai_game_scope_from_text(previous_question);
     if (previous_question && previous_question[0] &&
         strlen(question) < 95)
         n = snprintf(query, sizeof(query), "Вопрос: %s. Контекст: %.480s",
@@ -346,7 +353,12 @@ int ai_semantic_search(const char *question, const char *previous_question,
 
     for (i = 0; i < g_sem.count; ++i)
     {
-        double similarity = cosine(query_vector, g_sem.docs[i].vector, dim);
+        double similarity;
+        if (scope != AI_GAME_NONE &&
+            g_sem.docs[i].game != AI_GAME_NONE &&
+            scope != g_sem.docs[i].game)
+            continue;
+        similarity = cosine(query_vector, g_sem.docs[i].vector, dim);
         if (similarity > first)
         {
             second = first;

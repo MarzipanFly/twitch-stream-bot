@@ -24,6 +24,7 @@ SOURCES += \
     src/ai_chat.c \
     src/ai_text.c \
     src/ai_retrieval.c \
+    src/ai_game_scope.c \
     src/ai_semantic.c \
     src/chat_promo.c \
     src/ai_knowledge.c \
@@ -61,6 +62,7 @@ HEADERS += \
     include/ai_chat.h \
     include/ai_text.h \
     include/ai_retrieval.h \
+    include/ai_game_scope.h \
     include/ai_semantic.h \
     include/chat_promo.h \
     include/ai_knowledge.h \

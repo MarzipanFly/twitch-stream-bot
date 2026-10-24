@@ -1,4 +1,5 @@
 #include "ai_retrieval.h"
+#include "ai_game_scope.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -96,8 +97,12 @@ int ai_retrieval_search(const char *question, const char *previous_question,
     int ranks[MAX_DOCS] = {0};
     size_t token_count, i;
     int found = 0;
+    AiGameScope scope;
     if (!out || capacity < 128) return 0;
     out[0] = '\0';
+    scope = ai_game_scope_from_text(question);
+    if (scope == AI_GAME_NONE)
+        scope = ai_game_scope_from_text(previous_question);
     token_count = make_tokens(question, previous_question, tokens);
     if (!token_count) return 0;
     f = fopen(KNOWLEDGE_FILE, "rb");
@@ -127,6 +132,11 @@ int ai_retrieval_search(const char *question, const char *previous_question,
         url = p;
         url[strcspn(url, "\r\n")] = '\0';
         if (!title[0] || !facts[0] || !valid_source(url)) continue;
+        /* Explicit game names prevent cross-game knowledge contamination. */
+        if (scope != AI_GAME_NONE &&
+            ai_game_scope_from_title(title) != AI_GAME_NONE &&
+            scope != ai_game_scope_from_title(title))
+            continue;
         fold(title, lower_title, sizeof(lower_title));
         fold(aliases, lower_alias, sizeof(lower_alias));
         fold(facts, lower_facts, sizeof(lower_facts));
