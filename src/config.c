@@ -18,6 +18,7 @@ typedef enum
     SECTION_PROMO,
     SECTION_STREAM_REPORT,
     SECTION_DASHBOARD,
+    SECTION_COOLDOWNS,
     SECTION_SOUNDS
 
 } ConfigSection;
@@ -97,6 +98,7 @@ static ConfigSection parse_section(
     if (strcmp(line, "[promo]") == 0) return SECTION_PROMO;
     if (strcmp(line, "[stream_report]") == 0) return SECTION_STREAM_REPORT;
     if (strcmp(line, "[dashboard]") == 0) return SECTION_DASHBOARD;
+    if (strcmp(line, "[cooldowns]") == 0) return SECTION_COOLDOWNS;
     if (strcmp(line, "[sounds]") == 0) return SECTION_SOUNDS;
 
     if (strcmp(line, "[bot]") == 0)
@@ -329,6 +331,21 @@ static void parse_key_value(
             }
             break;
 
+        case SECTION_COOLDOWNS:
+        {
+            unsigned int seconds;
+            char extra;
+            if (sscanf(value,"%u %c",&seconds,&extra)==1 && seconds<=300)
+            {
+                if (!strcmp(key,"normal_seconds"))
+                    config->cooldowns.normal_seconds=seconds;
+                else if (!strcmp(key,"game_seconds"))
+                    config->cooldowns.game_seconds=seconds;
+                else if (!strcmp(key,"bruh_seconds"))
+                    config->cooldowns.bruh_seconds=seconds;
+            }
+            break;
+        }
         case SECTION_SOUNDS:
         {
             /* command=OBS_input,cooldown_seconds,cost; legacy cost=0 */
@@ -445,6 +462,9 @@ BotResult config_load(
     config->stream_report.enabled = 1;
     config->dashboard.enabled = 1;
     config->dashboard.port = 8765;
+    config->cooldowns.normal_seconds = 10;
+    config->cooldowns.game_seconds = 5;
+    config->cooldowns.bruh_seconds = 15;
 
     file = fopen(filename, "r");
 

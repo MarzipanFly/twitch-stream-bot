@@ -14,8 +14,8 @@
 #define DASHBOARD_PREFS "data/dashboard_controls.ini"
 #define DASHBOARD_PREFS_TMP "data/dashboard_controls.tmp"
 #define DASHBOARD_REQ_MAX 8192
-#define DASHBOARD_BODY_MAX 512
-#define DASHBOARD_JSON_MAX 19000
+#define DASHBOARD_BODY_MAX 2500
+#define DASHBOARD_JSON_MAX 38000
 #define DASHBOARD_HTML_MAX (96 * 1024)
 #define DASHBOARD_PORT_DEFAULT 8765
 
@@ -38,6 +38,11 @@ static void changes_reset(DashboardChanges *v)
     v->ai = v->promo = v->reports = -1;
     v->obs_action = 0;
     v->obs_scene[0] = '\0';
+    v->audio_action=0;v->audio_input[0]='\0';
+    v->audio_mute=0;v->audio_volume=0;
+    v->music_action=0;v->mark_moment=0;
+    v->settings_action=0;
+    v->settings_key[0]='\0';v->settings_value[0]='\0';
 }
 void dashboard_load_preferences(AppConfig *cfg)
 {
@@ -169,6 +174,74 @@ static int status_json(char *json, size_t capacity)
         snprintf(value,sizeof(value),",\"balance\":%lld}",s.leaders[i].balance);
         if (!json_append(json,capacity,&n,value)) return 0;
     }
+    if(!json_append(json,capacity,&n,"],\"obs_audio\":["))return 0;
+    for(i=0;i<s.obs_state.audio_count && i<DASH_OBS_MAX_AUDIO;++i)
+    {
+        char value[110];
+        if(i && !json_append(json,capacity,&n,","))return 0;
+        if(!json_append(json,capacity,&n,"{\"name\":") ||
+           !json_quote(json,capacity,&n,s.obs_state.audio[i].name))return 0;
+        snprintf(value,sizeof(value),
+                 ",\"volume\":%.3f,\"muted\":%s}",
+                 s.obs_state.audio[i].volume,
+                 s.obs_state.audio[i].muted?"true":"false");
+        if(!json_append(json,capacity,&n,value))return 0;
+    }
+    if(!json_append(json,capacity,&n,"],\"music_queue\":["))return 0;
+    for(i=0;i<s.queued_count && i<MUSIC_QUEUE_CAPACITY;++i)
+    {
+        if(i&&!json_append(json,capacity,&n,","))return 0;
+        if(!json_append(json,capacity,&n,"{\"title\":") ||
+           !json_quote(json,capacity,&n,s.queued[i].title) ||
+           !json_append(json,capacity,&n,",\"requester\":") ||
+           !json_quote(json,capacity,&n,s.queued[i].requester) ||
+           !json_append(json,capacity,&n,"}"))return 0;
+    }
+    if(!json_append(json,capacity,&n,"],\"view_chart\":["))return 0;
+    for(i=0;i<s.chart.count && i<DASH_CHART_SAMPLES;++i)
+    {
+        char value[20];
+        if(i&&!json_append(json,capacity,&n,","))return 0;
+        snprintf(value,sizeof(value),"%d",s.chart.viewers[i]);
+        if(!json_append(json,capacity,&n,value))return 0;
+    }
+    if(!json_append(json,capacity,&n,"],\"history\":") ||
+       !json_quote(json,capacity,&n,s.reports_history) ||
+       !json_append(json,capacity,&n,",\"current_requester\":") ||
+       !json_quote(json,capacity,&n,s.current_requester) ||
+       !json_append(json,capacity,&n,",\"telegram_url\":") ||
+       !json_quote(json,capacity,&n,s.telegram_url) ||
+       !json_append(json,capacity,&n,",\"discord_url\":") ||
+       !json_quote(json,capacity,&n,s.discord_url) ||
+       !json_append(json,capacity,&n,",\"telegram_chat_id\":") ||
+       !json_quote(json,capacity,&n,s.telegram_chat_id))
+       return 0;
+    {
+        char value[250];
+        snprintf(value,sizeof(value),
+                 ",\"ai_cooldown\":%u,\"normal_cooldown\":%u,"
+                 "\"game_cooldown\":%u,\"bruh_cooldown\":%u,"
+                 "\"command_seq\":%u,",
+                 s.ai_cooldown,s.cooldown_normal,s.cooldown_game,
+                 s.cooldown_bruh,s.command_seq);
+        if(!json_append(json,capacity,&n,value))return 0;
+    }
+    if(!json_append(json,capacity,&n,"\"command_result\":") ||
+       !json_quote(json,capacity,&n,s.command_result) ||
+       !json_append(json,capacity,&n,",\"sounds\":["))return 0;
+    for(i=0;i<s.sound_count && i<SOUND_MAX_COUNT;++i)
+    {
+        char value[140];
+        if(i&&!json_append(json,capacity,&n,","))return 0;
+        if(!json_append(json,capacity,&n,"{\"command\":") ||
+           !json_quote(json,capacity,&n,s.sounds[i].command) ||
+           !json_append(json,capacity,&n,",\"input\":") ||
+           !json_quote(json,capacity,&n,s.sounds[i].input))return 0;
+        snprintf(value,sizeof(value),
+                 ",\"cost\":%lld,\"cooldown\":%u}",
+                 s.sounds[i].cost,s.sounds[i].cooldown_seconds);
+        if(!json_append(json,capacity,&n,value))return 0;
+    }
     return json_append(json,capacity,&n,"]}");
 }
 
@@ -247,7 +320,8 @@ static int load_asset(const char *file, char **html, size_t *length)
     long n;
     *html = NULL;
     *length = 0;
-    if (strcmp(file, "index.html") && strcmp(file, "app.js")) return 0;
+    if (strcmp(file,"index.html") && strcmp(file,"app.js") &&
+        strcmp(file,"settings.html") && strcmp(file,"settings.js"))return 0;
     for (i = 0; i < sizeof(prefixes)/sizeof(prefixes[0]); ++i)
     {
         snprintf(file_path[i], sizeof(file_path[i]), "%s%s", prefixes[i], file);
@@ -333,6 +407,88 @@ static int queue_setting(const char *body)
         LeaveCriticalSection(&g_dashboard.lock);
         return 1;
     }
+    if(!strcmp(body,"action=music&mode=skip") ||
+       !strcmp(body,"action=music&mode=clear"))
+    {
+        EnterCriticalSection(&g_dashboard.lock);
+        if(p->music_action){LeaveCriticalSection(&g_dashboard.lock);return 0;}
+        p->music_action=strstr(body,"skip")?1:2;
+        LeaveCriticalSection(&g_dashboard.lock);
+        return 1;
+    }
+    if(!strcmp(body,"action=moment"))
+    {
+        EnterCriticalSection(&g_dashboard.lock);
+        if(!g_dashboard.status.live || p->mark_moment)
+        {LeaveCriticalSection(&g_dashboard.lock);return 0;}
+        p->mark_moment=1;
+        LeaveCriticalSection(&g_dashboard.lock);
+        return 1;
+    }
+    if(starts_with(body,"action=audio&index="))
+    {
+        unsigned int idx,vol=0;
+        char type[10],extra;
+        if(sscanf(body,"action=audio&index=%u&mode=%9[a-z]&value=%u%c",
+                  &idx,type,&vol,&extra)!=3 ||
+           idx>=DASH_OBS_MAX_AUDIO || vol>100 ||
+           (strcmp(type,"mute")&&strcmp(type,"volume")))return 0;
+        EnterCriticalSection(&g_dashboard.lock);
+        if(!g_dashboard.status.obs_state.connected ||
+           idx>=g_dashboard.status.obs_state.audio_count ||
+           p->audio_action)
+        {LeaveCriticalSection(&g_dashboard.lock);return 0;}
+        p->audio_action=!strcmp(type,"mute")?2:1;
+        p->audio_mute=vol?1:0;
+        p->audio_volume=vol/100.0;
+        snprintf(p->audio_input,sizeof(p->audio_input),"%s",
+                 g_dashboard.status.obs_state.audio[idx].name);
+        LeaveCriticalSection(&g_dashboard.lock);
+        return 1;
+    }
+    if(starts_with(body,"action=setting&key="))
+    {
+        const char *sep=strstr(body+19,"&value=");
+        char key[80],value[CONFIG_STRING_SIZE];
+        size_t len;
+        const char *cur;
+        size_t n=0;
+        if(!sep)return 0;
+        len=(size_t)(sep-(body+19));
+        if(!len||len>=sizeof(key))return 0;
+        memcpy(key,body+19,len);key[len]='\0';
+        for(cur=key;*cur;++cur)
+            if(!((*cur>='a'&&*cur<='z')||(*cur>='0'&&*cur<='9')||*cur=='_'))
+                return 0;
+        cur=sep+7;
+        while(*cur)
+        {
+            unsigned char c=(unsigned char)*cur++;
+            if(c=='%')
+            {
+                int a,b;unsigned char x,y;
+                if(!cur[0]||!cur[1])return 0;
+                x=(unsigned char)cur[0];y=(unsigned char)cur[1];
+                a=(x>='0'&&x<='9')?x-'0':(x>='A'&&x<='F')?x-'A'+10:
+                  (x>='a'&&x<='f')?x-'a'+10:-1;
+                b=(y>='0'&&y<='9')?y-'0':(y>='A'&&y<='F')?y-'A'+10:
+                  (y>='a'&&y<='f')?y-'a'+10:-1;
+                if(a<0||b<0)return 0;
+                c=(unsigned char)(a*16+b);cur+=2;
+            }
+            else if(c=='+')c=' ';
+            if(c<32 || c==127 || n+1>=sizeof(value))return 0;
+            value[n++]=(char)c;
+        }
+        value[n]='\0';
+        EnterCriticalSection(&g_dashboard.lock);
+        if(p->settings_action){LeaveCriticalSection(&g_dashboard.lock);return 0;}
+        p->settings_action=1;
+        snprintf(p->settings_key,sizeof(p->settings_key),"%s",key);
+        memcpy(p->settings_value,value,n+1);
+        LeaveCriticalSection(&g_dashboard.lock);
+        return 1;
+    }
     if (starts_with(body, "feature=ai&enabled=")) key = "ai";
     if (starts_with(body, "feature=promo&enabled=")) key = "promo";
     if (starts_with(body, "feature=reports&enabled=")) key = "reports";
@@ -403,6 +559,26 @@ static void handle_connection(SOCKET client)
         }
         else http_reply(client,404,"text/plain; charset=utf-8",
                         "dashboard/app.js not found",26);
+    }
+    else if (is_get && starts_with(request,"GET /settings "))
+    {
+        char *html=NULL;size_t size=0;
+        if(load_asset("settings.html",&html,&size))
+        {
+            http_reply(client,200,"text/html; charset=utf-8",html,size);
+            free(html);
+        }
+        else http_reply(client,404,"text/plain","Not found",9);
+    }
+    else if (is_get && starts_with(request,"GET /settings.js "))
+    {
+        char *js=NULL;size_t size=0;
+        if(load_asset("settings.js",&js,&size))
+        {
+            http_reply(client,200,"text/javascript; charset=utf-8",js,size);
+            free(js);
+        }
+        else http_reply(client,404,"text/plain","Not found",9);
     }
     else if (is_get && starts_with(request,"GET /api/status "))
     {
@@ -546,6 +722,8 @@ int dashboard_take_changes(DashboardChanges *changes)
     changes_reset(&g_dashboard.pending);
     LeaveCriticalSection(&g_dashboard.lock);
     pending = changes->ai != -1 || changes->promo != -1 ||
-              changes->reports != -1 || changes->obs_action != 0;
+              changes->reports != -1 || changes->obs_action != 0 ||
+              changes->audio_action || changes->music_action ||
+              changes->mark_moment || changes->settings_action;
     return pending;
 }

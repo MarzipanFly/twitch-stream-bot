@@ -3,6 +3,8 @@
 
 #include "config.h"
 #include "dashboard_obs.h"
+#include "dashboard_stats.h"
+#include "music_queue.h"
 #include <stddef.h>
 
 #define DASHBOARD_LEADERS 5
@@ -25,6 +27,18 @@ typedef struct
     size_t leader_count;
     unsigned int obs_result_sequence;
     char obs_result[160];
+    char telegram_url[CONFIG_STRING_SIZE],discord_url[CONFIG_STRING_SIZE];
+    char telegram_chat_id[CONFIG_STRING_SIZE];
+    unsigned int ai_cooldown, cooldown_normal, cooldown_game, cooldown_bruh;
+    SoundConfig sounds[SOUND_MAX_COUNT];
+    size_t sound_count;
+    MusicTrack queued[MUSIC_QUEUE_CAPACITY];
+    size_t queued_count;
+    char current_requester[MUSIC_REQUESTER_SIZE];
+    DashboardChart chart;
+    char reports_history[1400];
+    unsigned int command_seq;
+    char command_result[200];
 } DashboardStatus;
 
 typedef struct
@@ -32,6 +46,15 @@ typedef struct
     int ai, promo, reports; /* -1 = unchanged, 0 = disable, 1 = enable */
     int obs_action;  /* 0: none; 1: scene, 2: start record, 3: stop record */
     char obs_scene[DASH_OBS_SCENE_LENGTH];
+    int audio_action; /* 0 none, 1 set volume, 2 mute */
+    char audio_input[256];
+    int audio_mute;
+    double audio_volume;
+    int music_action; /* 1 skip current; 2 clear upcoming */
+    int mark_moment;
+    int settings_action;
+    char settings_key[80];
+    char settings_value[CONFIG_STRING_SIZE];
 } DashboardChanges;
 
 /* HTTP server on loopback only. Returns 0 if disabled/unavailable. */

@@ -2,6 +2,7 @@
 #define COMMAND_COOLDOWN_H
 
 #include "commands.h"
+#include "config.h"
 
 #define COMMAND_COOLDOWN_MAX_USERS 256
 
@@ -9,6 +10,7 @@
  * Инициализирует систему куладунов
  */
 void command_cooldown_init(void);
+void command_cooldown_configure(const CooldownConfig *config);
 
 
 /*

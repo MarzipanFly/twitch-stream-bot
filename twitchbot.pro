@@ -30,6 +30,8 @@ SOURCES += \
     src/stream_report.c \
     src/dashboard_server.c \
     src/dashboard_obs.c \
+    src/dashboard_settings.c \
+    src/dashboard_stats.c \
     src/ai_knowledge.c \
     src/ai_tactics.c \
     src/achievements.c \
@@ -72,6 +74,8 @@ HEADERS += \
     include/stream_report.h \
     include/dashboard.h \
     include/dashboard_obs.h \
+    include/dashboard_settings.h \
+    include/dashboard_stats.h \
     include/ai_knowledge.h \
     include/ai_tactics.h \
     include/achievements.h \
@@ -96,6 +100,7 @@ HEADERS += \
 
 win32-g++ {
     LIBS += -lws2_32
+    LIBS += -lcrypt32
     LIBS += -lwinhttp
     LIBS += -lm
     LIBS += -lcrypt32
@@ -104,6 +109,7 @@ win32-g++ {
 
 win32-msvc* {
     LIBS += Ws2_32.lib
+    LIBS += Crypt32.lib
     LIBS += Winhttp.lib
     LIBS += Crypt32.lib
     LIBS += Advapi32.lib
@@ -112,6 +118,8 @@ win32-msvc* {
 DISTFILES += \
     config.ini \
     dashboard/index.html \
-    dashboard/app.js
+    dashboard/app.js \
+    dashboard/settings.html \
+    dashboard/settings.js
 
 VERSION = 0.8.0.0

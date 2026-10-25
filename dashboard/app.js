@@ -28,6 +28,7 @@ async function refresh() {
   text('obs',!d.obs?'Выключен в настройках':d.obs_connected?'OBS подключён':'OBS недоступен');
   text('promoPeriod',d.promo_min+'–'+d.promo_max+' мин');
   renderObs(d);
+  renderAudio(d);renderMusic(d);renderChart(d);
   text('updated','Обновлено '+new Date().toLocaleTimeString('ru-RU'));
   for(const feature of ['ai','promo','reports']) {
     if(pending.has(feature)) continue;
@@ -126,6 +127,89 @@ byId('obsRecordButton').addEventListener('click',()=>{
   if(recording&&!window.confirm('Остановить запись в OBS? Несохранённый материал может быть потерян при сбое.'))return;
   obsAction(new URLSearchParams({action:'record',enabled:recording?'0':'1'}).toString());
 });
+
+async function command(body) {
+ try {
+  const result=await fetch('/api/control',{method:'POST',
+   headers:{'Content-Type':'application/x-www-form-urlencoded','X-Apelsin-Local':'1'},
+   body:new URLSearchParams(body).toString()});
+  if(result.status!==202)throw Error('Команда отклонена');
+  toast('Запрос отправлен боту');
+ } catch(e){toast('Ошибка: '+e.message)}
+}
+let lastAudioChanges={};
+function renderAudio(d) {
+ const root=byId('audioMixer');
+ const inputs=Array.isArray(d.obs_audio)?d.obs_audio:[];
+ const key=inputs.map(x=>x.name).join('::');
+ if(root.dataset.audioKey!==key) {
+  root.dataset.audioKey=key;
+  root.replaceChildren();
+  if(!inputs.length){root.textContent=d.obs_connected?
+    'Аудиовходы OBS не найдены':'Открой OBS, чтобы увидеть микшер';return;}
+  inputs.forEach((input,index)=>{
+   const line=document.createElement('div');line.className='small-row';
+   const box=document.createElement('div');box.style.minWidth='0';box.style.flex='1';
+   const name=document.createElement('div');name.className='small-name';name.textContent=input.name;
+   const value=document.createElement('div');value.className='tiny';value.id='audioVal'+index;
+   box.append(name,value);
+   const range=document.createElement('input');range.type='range';range.min='0';range.max='100';
+   range.className='range';range.id='audioRange'+index;
+   const mute=document.createElement('button');mute.className='action-btn ghost slim';
+   mute.id='audioMute'+index;mute.dataset.index=String(index);mute.dataset.action='mute';
+   mute.addEventListener('click',()=>command({action:'audio',index,
+      mode:'mute',value:mute.dataset.muted==='true'?0:1}));
+   range.addEventListener('change',()=>command({
+     action:'audio',index,mode:'volume',value:range.value}));
+   line.append(box,range,mute);root.append(line);
+  });
+ }
+ inputs.forEach((input,index)=>{
+   const range=byId('audioRange'+index),mute=byId('audioMute'+index);
+   if(!range||!mute)return;
+   if(document.activeElement!==range)range.value=String(Math.round(input.volume*100));
+   mute.textContent=input.muted?'Вкл. звук':'Mute';
+   mute.dataset.muted=String(Boolean(input.muted));
+   mute.disabled=!d.obs_connected;
+   range.disabled=!d.obs_connected;
+   text('audioVal'+index,Math.round(input.volume*100)+'%');
+ });
+}
+function renderMusic(d) {
+ text('musicCurrent',d.track||'Нет активного трека');
+ text('musicRequester',d.current_requester?'Заказал: '+d.current_requester:'');
+ const list=byId('musicList');list.replaceChildren();
+ (d.music_queue||[]).forEach((track,i)=>{
+  const row=document.createElement('div');row.className='small-row';
+  const title=document.createElement('div');title.className='small-name';
+  title.textContent=(i+1)+'. '+track.title;
+  const name=document.createElement('div');name.className='tiny';name.textContent=track.requester;
+  row.append(title,name);list.append(row);
+ });
+ if(!(d.music_queue||[]).length)list.textContent='Очередь пуста';
+ byId('musicSkip').disabled=!d.track||!d.obs_connected;
+ byId('musicClear').disabled=!d.music_queue?.length;
+ byId('markMoment').disabled=!d.live;
+}
+function renderChart(d) {
+ const values=Array.isArray(d.view_chart)?d.view_chart:[];
+ const svg=byId('viewLine');
+ if(values.length<2){svg.setAttribute('d','');text('chartSummary','Недостаточно замеров');}
+ else {
+  const top=Math.max(1,...values);
+  const pts=values.map((v,i)=>[(i*480/(values.length-1)+10),
+                                 (151-140*v/top)]);
+  svg.setAttribute('d','M'+pts.map(p=>p.map(x=>x.toFixed(2)).join(',')).join(' L'));
+  text('chartSummary','Замеров: '+values.length+' · пик: '+top+' зрителей');
+ }
+ text('reportHistory',d.history||'Сохранённых отчётов пока нет');
+}
+byId('musicSkip').addEventListener('click',()=>command({action:'music',mode:'skip'}));
+byId('musicClear').addEventListener('click',()=>{
+ if(window.confirm('Удалить ВСЕ ожидающие треки? Текущий трек продолжит играть.'))
+  command({action:'music',mode:'clear'});
+});
+byId('markMoment').addEventListener('click',()=>command({action:'moment'}));
 
 async function toggle(feature) {
  if(pending.has(feature))return;

@@ -723,6 +723,14 @@ int ai_chat_start(const AiConfig *config)
     return 1;
 }
 
+void ai_chat_set_cooldown(unsigned int seconds)
+{
+    if (!g_ai.started) return;
+    EnterCriticalSection(&g_ai.lock);
+    g_ai.cooldown_ms = seconds * 1000U;
+    LeaveCriticalSection(&g_ai.lock);
+}
+
 int ai_chat_running(void)
 {
     return g_ai.started;

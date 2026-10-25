@@ -1,4 +1,5 @@
 #include "command_cooldown.h"
+#include "config.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -21,6 +22,12 @@ typedef struct
 static CommandCooldownUser g_users[COMMAND_COOLDOWN_MAX_USERS];
 
 static size_t g_user_count = 0;
+static CooldownConfig g_cooldowns = {10,5,15};
+
+void command_cooldown_configure(const CooldownConfig *cfg)
+{
+    if (cfg) g_cooldowns = *cfg;
+}
 
 /*
  * Вовзращают длительность кулдауна
@@ -41,7 +48,7 @@ static DWORD get_cooldown_ms(
         case CHAT_COMMAND_PROFILE:
         case CHAT_COMMAND_ACHIEVEMENTS:
 		case CHAT_COMMAND_RANK:
-			return 10UL * 1000UL;
+			return (DWORD)g_cooldowns.normal_seconds * 1000UL;
 
 		case CHAT_COMMAND_COIN:
 		case CHAT_COMMAND_DICE:
@@ -50,13 +57,13 @@ static DWORD get_cooldown_ms(
 		case CHAT_COMMAND_DUEL:
 		case CHAT_COMMAND_ACCEPT:
 		case CHAT_COMMAND_DECLINE:
-            return 5UL * 1000UL;
+            return (DWORD)g_cooldowns.game_seconds * 1000UL;
 
 		case CHAT_COMMAND_CLAIM:
 			return 0;
 
         case CHAT_COMMAND_BRUH:
-            return 15UL * 1000UL;
+            return (DWORD)g_cooldowns.bruh_seconds * 1000UL;
 
 		default:
 			return 0;

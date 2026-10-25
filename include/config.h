@@ -104,6 +104,11 @@ typedef struct
     unsigned int port;
 } DashboardConfig;
 
+typedef struct
+{
+    unsigned int normal_seconds, game_seconds, bruh_seconds;
+} CooldownConfig;
+
 /* Configurable OBS sounds, UTF-8 command names without prefix. */
 #define SOUND_MAX_COUNT 16
 #define SOUND_NAME_SIZE 64
@@ -127,6 +132,7 @@ typedef struct
     PromoConfig promo;
     StreamReportConfig stream_report;
     DashboardConfig dashboard;
+    CooldownConfig cooldowns;
     SoundConfig sounds[SOUND_MAX_COUNT];
     size_t sound_count;
 

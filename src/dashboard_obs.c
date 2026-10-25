@@ -64,6 +64,66 @@ static int obs_scene_list(ObsWebSocket *client, DashboardObs *out)
     cJSON_Delete(json);
     return 1;
 }
+static int audio_request(ObsWebSocket *ws, const char *request,
+                         const char *name, cJSON **json)
+{
+    char data[600], reply[16000];
+    size_t i = 0, n = 0;
+    char quoted[530];
+    if (!name || strlen(name)>240) return 0;
+    quoted[n++]='"';
+    for(i=0;name[i];++i)
+    {
+        unsigned char c=(unsigned char)name[i];
+        if(c<32)return 0;
+        if(c=='"' || c=='\\')quoted[n++]='\\';
+        quoted[n++]=(char)c;
+    }
+    quoted[n++]='"';quoted[n]='\0';
+    snprintf(data,sizeof(data),"{\"inputName\":%s}",quoted);
+    if(obs_websocket_request(ws,request,data,reply,sizeof(reply))!=BOT_OK)
+        return 0;
+    *json=cJSON_Parse(reply);
+    return *json!=NULL;
+}
+static void load_audio(ObsWebSocket *ws, DashboardObs *out)
+{
+    cJSON *list=NULL, *root=NULL, *state=NULL;
+    const cJSON *inputs,*item,*name,*value;
+    int i;
+    char request[700], reply[256];
+    if(!obs_get_json(ws,"GetInputList",&list))return;
+    inputs=cJSON_GetObjectItemCaseSensitive(list,"inputs");
+    if(!cJSON_IsArray(inputs)){cJSON_Delete(list);return;}
+    for(i=0;i<cJSON_GetArraySize(inputs) &&
+          out->audio_count<DASH_OBS_MAX_AUDIO;++i)
+    {
+        item=cJSON_GetArrayItem(inputs,i);
+        name=cJSON_GetObjectItemCaseSensitive(item,"inputName");
+        if(!cJSON_IsString(name)||!name->valuestring ||
+           strlen(name->valuestring)>240)continue;
+        if(!audio_request(ws,"GetInputVolume",name->valuestring,&root))
+            continue; /* non-audio OBS input */
+        value=cJSON_GetObjectItemCaseSensitive(root,"inputVolumeMul");
+        if(!cJSON_IsNumber(value)){cJSON_Delete(root);root=NULL;continue;}
+        out->audio[out->audio_count].volume=value->valuedouble;
+        cJSON_Delete(root);root=NULL;
+        if(!audio_request(ws,"GetInputMute",name->valuestring,&state))continue;
+        value=cJSON_GetObjectItemCaseSensitive(state,"inputMuted");
+        if(!value || (!(value->type & cJSON_True) &&
+                      !(value->type & cJSON_False)))
+        {cJSON_Delete(state);state=NULL;continue;}
+        out->audio[out->audio_count].muted=(value->type & cJSON_True)!=0;
+        snprintf(out->audio[out->audio_count].name,
+                 sizeof(out->audio[out->audio_count].name),
+                 "%s",name->valuestring);
+        ++out->audio_count;
+        cJSON_Delete(state);state=NULL;
+    }
+    cJSON_Delete(list);
+    (void)request;(void)reply;
+}
+
 int dashboard_obs_refresh(const char *password, DashboardObs *out)
 {
     ObsWebSocket ws = {0};
@@ -78,6 +138,7 @@ int dashboard_obs_refresh(const char *password, DashboardObs *out)
     scenes_ok = obs_scene_list(&ws, out);
     (void)obs_read_active(&ws, "GetRecordStatus", &out->recording);
     (void)obs_read_active(&ws, "GetStreamStatus", &out->streaming);
+    load_audio(&ws,out);
     obs_websocket_close(&ws);
     return scenes_ok;
 }
@@ -116,6 +177,53 @@ int dashboard_obs_record(const char *password, int start)
                               NULL, response, sizeof(response)) == BOT_OK)
         ok = 1;
 cleanup:
+    obs_websocket_close(&ws);
+    return ok;
+}
+
+int dashboard_obs_audio(const char *password, const char *name,
+                        int set_mute, int mute, double volume)
+{
+    ObsWebSocket ws={0};
+    cJSON *json=NULL;
+    const cJSON *inputs,*item,*item_name;
+    char quoted[530], body[730], reply[2048];
+    int i, found=0, ok=0, n=0;
+    size_t k;
+    if(!name || !*name || strlen(name)>240 ||
+       (set_mute!=0 && set_mute!=1) ||
+       (volume<0 || volume>1))return 0;
+    if(obs_websocket_connect(&ws,password)!=BOT_OK)return 0;
+    if(!obs_get_json(&ws,"GetInputList",&json))goto done;
+    inputs=cJSON_GetObjectItemCaseSensitive(json,"inputs");
+    for(i=0;inputs&&i<cJSON_GetArraySize(inputs);++i)
+    {
+        item=cJSON_GetArrayItem(inputs,i);
+        item_name=cJSON_GetObjectItemCaseSensitive(item,"inputName");
+        if(cJSON_IsString(item_name)&&!strcmp(item_name->valuestring,name))
+            found=1;
+    }
+    cJSON_Delete(json);json=NULL;
+    if(!found)goto done;
+    quoted[n++]='"';
+    for(k=0;name[k];++k)
+    {
+        unsigned char c=(unsigned char)name[k];
+        if(c<32)goto done;
+        if(c=='"'||c=='\\')quoted[n++]='\\';
+        quoted[n++]=(char)c;
+    }
+    quoted[n++]='"';quoted[n]='\0';
+    if(set_mute)
+        snprintf(body,sizeof(body),"{\"inputName\":%s,\"inputMuted\":%s}",
+                 quoted,mute?"true":"false");
+    else
+        snprintf(body,sizeof(body),"{\"inputName\":%s,\"inputVolumeMul\":%.3f}",
+                 quoted,volume);
+    ok=obs_websocket_request(&ws,set_mute?"SetInputMute":"SetInputVolume",
+                              body,reply,sizeof(reply))==BOT_OK;
+done:
+    cJSON_Delete(json);
     obs_websocket_close(&ws);
     return ok;
 }

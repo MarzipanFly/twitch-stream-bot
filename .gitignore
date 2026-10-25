@@ -40,3 +40,6 @@ tests/.tmp_stream_report/
 
 # Dashboard smoke test fixtures
 tests/.tmp_dashboard/
+
+# Dashboard settings tests
+tests/.tmp_settings/

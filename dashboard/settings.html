@@ -1,0 +1,28 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>ApelsinBot — настройки</title>
+<style>
+:root{color-scheme:dark;--bg:#101014;--panel:#202027;--edge:#3d3d49;--muted:#aaaab9;--orange:#ff9a33;--text:#f6f6f8}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% -25%,#4a2d1e,transparent 65%),var(--bg);color:var(--text);font:15px/1.5 system-ui,Segoe UI,sans-serif}
+main{max-width:1050px;margin:auto;padding:32px 22px 80px}.top{display:flex;gap:20px;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-bottom:30px}
+h1{margin:0;font-size:27px}h2{font-size:18px;margin:0 0 15px}a{color:var(--orange)}.muted{color:var(--muted);font-size:13px}
+.panel{border:1px solid var(--edge);border-radius:16px;background:linear-gradient(#24242b,#1a1a22);padding:24px;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}label{display:block;font-size:13px;color:#ccc;margin-bottom:5px}
+input{width:100%;padding:11px 12px;border:1px solid var(--edge);border-radius:10px;background:#15151a;color:#fff;font:inherit}input:focus{outline:2px solid #9a5d2a}
+.field{display:flex;align-items:end;gap:8px}.field>div{flex:1;min-width:0}button{background:var(--orange);border:0;border-radius:10px;padding:12px 14px;color:#201408;font-weight:750;cursor:pointer}button:disabled{opacity:.45;cursor:wait}
+.rows{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:10px;align-items:end}.sound{border-top:1px solid var(--edge);padding-top:13px;margin-top:13px}.sound strong{font-size:14px;overflow-wrap:anywhere}
+.tag{border:1px solid var(--edge);padding:8px 12px;border-radius:100px}.message{position:fixed;bottom:20px;right:20px;border-radius:10px;border:1px solid #99612d;background:#30241d;padding:12px 18px;display:none}.message.show{display:block}
+@media(max-width:740px){.grid,.rows{grid-template-columns:1fr}main{padding:16px 12px 60px}.panel{padding:18px}}
+</style><script defer src="/settings.js"></script></head><body>
+<main><header class="top"><div><h1>🍊 Настройки ApelsinBot</h1><p class="muted">Параметры сохраняются на компьютере стримера</p></div><nav><a href="/">← Главная панель</a></nav></header>
+<section class="panel"><h2>Ссылки сообщества</h2><div class="grid">
+<div class="field"><div><label for="telegram_url">Telegram-канал</label><input id="telegram_url" placeholder="https://t.me/..." maxlength="255"></div><button data-key="telegram_url">Сохранить</button></div>
+<div class="field"><div><label for="discord_url">Discord-приглашение</label><input id="discord_url" placeholder="https://discord.gg/..." maxlength="255"></div><button data-key="discord_url">Сохранить</button></div>
+<div class="field"><div><label for="telegram_chat_id">Telegram chat ID</label><input id="telegram_chat_id" maxlength="255"></div><button data-key="telegram_chat_id">Сохранить</button></div>
+</div></section>
+<section class="panel"><h2>Реклама и кулдауны</h2><div class="grid" id="numericFields"></div><p class="muted">Интервал рекламы: минимум не больше максимума. Секунды кулдаунов применяются к следующим командам.</p></section>
+<section class="panel"><h2>Звуковые эффекты 🍊</h2><p class="muted">Изменяются цены и кулдауны уже настроенных звуков. Новые звуковые команды пока добавляются через config.ini.</p><div id="soundFields"></div></section>
+<section class="panel"><h2>Защищённые доступы</h2><p class="muted">Пароли и токены сохраняются Windows DPAPI и никогда не показываются браузеру повторно. Оставь поле пустым, чтобы не изменять действующий доступ.</p>
+<div class="grid">
+<div class="field"><div><label for="obs_password">Пароль OBS WebSocket</label><input id="obs_password" type="password" autocomplete="new-password" placeholder="Новый пароль" maxlength="255"></div><button data-key="obs_password">Обновить</button></div>
+<div class="field"><div><label for="telegram_token">Токен Telegram Bot API</label><input id="telegram_token" type="password" autocomplete="new-password" placeholder="Новый токен" maxlength="255"></div><button data-key="telegram_token">Обновить</button></div>
+</div><p class="muted">Twitch OAuth уже защищён штатным файлом <code>data/twitch_tokens.dat</code>. Его не следует вставлять в браузер: для смены аккаунта используй авторизацию бота.</p></section>
+<div class="message" id="message" role="status" aria-live="polite"></div></main></body></html>

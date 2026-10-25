@@ -69,6 +69,26 @@ int main(void)
         "X-Apelsin-Local: 1\r\n"
         "Content-Type: application/x-www-form-urlencoded\r\n"
         "Content-Length: 23\r\n\r\naction=record&enabled=0";
+    const char *req_action_setting_key_promo_min_value_ = "POST /api/control HTTP/1.1\r\n"
+        "Host: 127.0.0.1:18765\r\nOrigin: http://127.0.0.1:18765\r\n"
+        "X-Apelsin-Local: 1\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "Content-Length: 36\r\n\r\naction=setting&key=promo_min&value=6";
+    const char *req_action_audio_index_mode_volume_value_ = "POST /api/control HTTP/1.1\r\n"
+        "Host: 127.0.0.1:18765\r\nOrigin: http://127.0.0.1:18765\r\n"
+        "X-Apelsin-Local: 1\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "Content-Length: 41\r\n\r\naction=audio&index=0&mode=volume&value=55";
+    const char *req_action_music_mode_clear = "POST /api/control HTTP/1.1\r\n"
+        "Host: 127.0.0.1:18765\r\nOrigin: http://127.0.0.1:18765\r\n"
+        "X-Apelsin-Local: 1\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "Content-Length: 23\r\n\r\naction=music&mode=clear";
+    const char *req_action_moment = "POST /api/control HTTP/1.1\r\n"
+        "Host: 127.0.0.1:18765\r\nOrigin: http://127.0.0.1:18765\r\n"
+        "X-Apelsin-Local: 1\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "Content-Length: 13\r\n\r\naction=moment";
     const char *bad_host =
         "GET /api/status HTTP/1.1\r\n"
         "Host: malicious.example\r\nConnection: close\r\n\r\n";
@@ -96,6 +116,23 @@ int main(void)
     data.obs_state.recording=1;
     data.obs_state.streaming=1;
     data.obs_state.scene_count=2;
+    data.obs_state.audio_count=1;
+    strcpy(data.obs_state.audio[0].name,"Mic/Aux");
+    data.obs_state.audio[0].volume=0.65;
+    data.obs_state.audio[0].muted=0;
+    data.ai_cooldown=30;
+    data.cooldown_normal=10;
+    data.cooldown_game=5;
+    data.cooldown_bruh=15;
+    strcpy(data.telegram_url,"https://t.me/channel");
+    data.chart.count=3;
+    data.chart.viewers[0]=1;data.chart.viewers[1]=6;data.chart.viewers[2]=3;
+    data.queued_count=1;
+    strcpy(data.queued[0].title,"Трек 1");
+    strcpy(data.queued[0].requester,"Viewer");
+    data.sound_count=1;
+    strcpy(data.sounds[0].command,"мем");
+    data.sounds[0].cost=200;
     strcpy(data.obs_state.scene,"Игра");
     strcpy(data.obs_state.scenes[0],"Игра");
     strcpy(data.obs_state.scenes[1],"Перерыв");
@@ -117,6 +154,15 @@ int main(void)
     assert(strstr(buffer,"\"leaderboard\":["));
     assert(strstr(buffer,"\"balance\":1700"));
     assert(strstr(buffer,"A<Bot>"));
+    assert(strstr(buffer,"\"obs_audio\":["));
+    assert(strstr(buffer,"Mic/Aux"));
+    assert(strstr(buffer,"\"music_queue\":["));
+    assert(strstr(buffer,"Трек 1"));
+    assert(strstr(buffer,"\"view_chart\":[1,6,3]"));
+    assert(strstr(buffer,"\"telegram_url\":"));
+    assert(strstr(buffer,"\"cost\":200"));
+    assert(!strstr(buffer,"obs_password"));
+    assert(!strstr(buffer,"telegram_token"));
 
     request(bad_host,buffer,sizeof(buffer));
     assert(strstr(buffer,"403 Forbidden"));
@@ -143,6 +189,26 @@ int main(void)
     assert(change.obs_action==3);
     assert(!dashboard_take_changes(&change));
 
+    request(req_action_setting_key_promo_min_value_,buffer,sizeof(buffer));
+    assert(strstr(buffer,"202 Accepted"));
+    assert(dashboard_take_changes(&change));
+    assert(change.settings_action==1);
+    assert(!dashboard_take_changes(&change));
+    request(req_action_audio_index_mode_volume_value_,buffer,sizeof(buffer));
+    assert(strstr(buffer,"202 Accepted"));
+    assert(dashboard_take_changes(&change));
+    assert(change.audio_action==1);
+    assert(!dashboard_take_changes(&change));
+    request(req_action_music_mode_clear,buffer,sizeof(buffer));
+    assert(strstr(buffer,"202 Accepted"));
+    assert(dashboard_take_changes(&change));
+    assert(change.music_action==2);
+    assert(!dashboard_take_changes(&change));
+    request(req_action_moment,buffer,sizeof(buffer));
+    assert(strstr(buffer,"202 Accepted"));
+    assert(dashboard_take_changes(&change));
+    assert(change.mark_moment==1);
+    assert(!dashboard_take_changes(&change));
     dashboard_stop();
     _chdir("../..");
     remove("tests/.tmp_dashboard/data/dashboard_controls.ini");

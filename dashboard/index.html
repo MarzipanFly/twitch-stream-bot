@@ -31,6 +31,12 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
 .rank-table td:nth-child(2){max-width:240px}
 .rank-table td:last-child{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 @media(max-width:520px){.action-btn{flex:1}}
+.small-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--edge)}
+.small-row:last-child{border-bottom:0}.small-name{font-weight:650;overflow-wrap:anywhere;font-size:13px}.tiny{font-size:12px;color:var(--muted)}
+.range{width:140px;accent-color:var(--orange)}.slim{padding:7px 11px;font-size:12px}
+.list-body{max-height:230px;overflow-y:auto}.chart-svg{width:100%;height:170px;border:1px solid #34333a;border-radius:12px;background:#151519}
+.sub-nav{font-size:13px;color:var(--orange);margin-right:12px;text-decoration:none}
+@media(max-width:540px){.range{width:86px}} 
 </style>
 <script defer src="/app.js"></script>
 </head>
@@ -38,7 +44,7 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
 <main class="shell">
 <header class="header">
   <div class="brand"><div class="symbol" aria-hidden="true">🍊</div><div><h1>ApelsinBot</h1><div class="sub">Центр управления трансляцией</div></div></div>
-  <div class="header-right"><span id="service" class="tag connected"><i class="dot"></i> Локально</span><span id="liveTag" class="tag">OFFLINE</span></div>
+  <div class="header-right"><a class="sub-nav" href="/settings">⚙ Настройки</a><span id="service" class="tag connected"><i class="dot"></i> Локально</span><span id="liveTag" class="tag">OFFLINE</span></div>
 </header>
 <section class="gridstats" aria-label="Статистика бота">
   <div class="card"><div class="eyebrow">Зрителей сейчас</div><div class="metric" id="viewers">—</div><div class="hint">По данным Twitch Helix</div></div>
@@ -103,6 +109,31 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
    </div>
    <div class="obs-feedback" id="obsFeedback" role="status" aria-live="polite"></div>
    <p class="note">Перед остановкой записи потребуется подтверждение. Запуск и завершение самой трансляции из панели не предусмотрены.</p>
+  </article>
+  <article class="panel">
+   <div class="section-head"><h2>Аудиомикшер OBS</h2><span class="minor">Громкость и Mute</span></div>
+   <div id="audioMixer" class="list-body"><span class="tiny">Ожидаем OBS…</span></div>
+  </article>
+  <article class="panel">
+   <div class="section-head"><h2>Музыкальный пульт</h2><span class="minor">Треки зрителей</span></div>
+   <div class="track"><div class="eyebrow">Воспроизведение</div><div class="v" id="musicCurrent">—</div><div id="musicRequester" class="tiny"></div></div>
+   <div class="actions">
+    <button id="musicSkip" class="action-btn ghost">Пропустить трек</button>
+    <button id="musicClear" class="action-btn ghost">Очистить очередь</button>
+   </div>
+   <div id="musicList" class="list-body" style="margin-top:16px"></div>
+  </article>
+  <article class="panel">
+   <div class="section-head"><h2>Маркеры клипов</h2><span class="minor">Сохраняются локально</span></div>
+   <p class="tiny">Отметить текущее время трансляции для нарезки клипов после стрима.</p>
+   <button id="markMoment" class="action-btn" disabled>★ Сохранить момент</button>
+  </article>
+  <article class="panel">
+   <div class="section-head"><h2>График зрителей</h2><span class="minor">До 120 наблюдений</span></div>
+   <svg class="chart-svg" viewBox="0 0 500 170" role="img" aria-label="Изменение количества зрителей"><path id="viewLine" fill="none" stroke="#ff9a33" stroke-width="3" d=""></path></svg>
+   <p id="chartSummary" class="tiny">Данные появятся во время стрима.</p>
+   <div class="divider"></div><div class="eyebrow">Сохранённые отчёты</div>
+   <pre class="top-viewers" id="reportHistory" style="white-space:pre-wrap">Нет данных</pre>
   </article>
   <article class="panel">
    <div class="section-head"><h2>Быстрый доступ</h2><span class="minor">Данные на компьютере</span></div>

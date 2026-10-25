@@ -29,5 +29,6 @@ void ai_chat_set_stream_context(const TwitchStream *stream);
 void ai_chat_set_current_track(const char *title);
 void ai_chat_stop(void);
 int ai_chat_running(void);
+void ai_chat_set_cooldown(unsigned int seconds);
 
 #endif

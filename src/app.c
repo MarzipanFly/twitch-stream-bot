@@ -29,6 +29,8 @@
 #include "stream_report.h"
 #include "dashboard.h"
 #include "dashboard_obs.h"
+#include "dashboard_settings.h"
+#include "dashboard_stats.h"
 #include "achievements.h"
 #include "youtube_metadata.h"
 
@@ -3773,6 +3775,11 @@ static BotResult run_bot_loop(
     DWORD last_obs_poll = 0;
     unsigned int obs_result_sequence = 0;
     char obs_result[160] = "";
+    unsigned int command_sequence = 0;
+    char command_message[200] = "";
+    DashboardChart view_chart = {0};
+    char reports_history[1400] = "";
+    DWORD last_history_scan = 0;
     DWORD dashboard_started_tick;
     int dashboard_peak = 0;
     char dashboard_peak_stream_id[TWITCH_STREAM_ID_SIZE] = "";
@@ -3815,6 +3822,8 @@ static BotResult run_bot_loop(
         initial_stream.is_live;
     dashboard_stream = initial_stream;
     dashboard_peak = initial_stream.is_live ? initial_stream.viewer_count : 0;
+    if (initial_stream.is_live)
+        dashboard_chart_observe(&view_chart, &initial_stream);
     if (initial_stream.is_live)
         snprintf(dashboard_peak_stream_id,
                  sizeof(dashboard_peak_stream_id),
@@ -3903,6 +3912,31 @@ static BotResult run_bot_loop(
         if (dashboard_running && dashboard_take_changes(&dash_changes))
         {
             int changed = 0;
+            if (dash_changes.settings_action)
+            {
+                const char *key=dash_changes.settings_key;
+                unsigned int previous_cooldown=config->ai.cooldown_seconds;
+                int ok=dashboard_settings_apply(config,key,
+                                                 dash_changes.settings_value);
+                if (ok)
+                {
+                    command_cooldown_configure(&config->cooldowns);
+                    if(previous_cooldown!=config->ai.cooldown_seconds)
+                        ai_chat_set_cooldown(config->ai.cooldown_seconds);
+                    snprintf(command_message,sizeof(command_message),
+                             "%s", "Настройка сохранена и применена");
+                    log_info("Dashboard setting updated: %s",key);
+                }
+                else
+                {
+                    snprintf(command_message,sizeof(command_message),
+                             "%s", "Не удалось сохранить настройку: проверь значение");
+                    log_warning("Dashboard setting rejected: %s",key);
+                }
+                ++command_sequence;
+                SecureZeroMemory(dash_changes.settings_value,
+                                 sizeof(dash_changes.settings_value));
+            }
             if (dash_changes.ai != -1 && config->ai.enabled != dash_changes.ai)
             {
                 if (dash_changes.ai)
@@ -3995,6 +4029,64 @@ static BotResult run_bot_loop(
                 }
                 ++obs_result_sequence;
                 last_obs_poll = (DWORD)(GetTickCount() - 15000UL);
+            }
+            if (dash_changes.music_action)
+            {
+                int ok=1;
+                if(dash_changes.music_action==2)
+                {
+                    music_queue_clear(&g_music_queue);
+                    snprintf(command_message,sizeof(command_message),
+                             "%s","Ожидающие треки удалены");
+                    log_info("Dashboard cleared pending music queue");
+                }
+                else
+                {
+                    if(!config->obs.enabled || !g_music_playback_started)
+                        ok=0;
+                    else
+                    {
+                        ObsWebSocket obs={0};
+                        BotResult r=obs_websocket_connect(&obs,config->obs.password);
+                        if(r==BOT_OK)r=obs_websocket_stop_media(&obs,"Bot_Music");
+                        obs_websocket_close(&obs);
+                        ok=r==BOT_OK;
+                        if(ok)
+                        {
+                            g_music_playback_started=0;
+                            g_music_current_valid=0;
+                            music_update_obs_text(NULL,NULL);
+                        }
+                    }
+                    snprintf(command_message,sizeof(command_message),
+                             "%s",ok?"Трек пропущен":"Не удалось пропустить трек");
+                    log_info("Dashboard skip music: %s",ok?"ok":"failed");
+                }
+                ++command_sequence;
+            }
+            if(dash_changes.mark_moment)
+            {
+                if(platform_create_directory("data/stream_reports")==BOT_OK &&
+                   dashboard_mark_moment(&dashboard_stream,"Интересный момент",
+                        time(NULL),command_message,sizeof(command_message)))
+                    log_info("Dashboard stream marker saved");
+                else
+                    snprintf(command_message,sizeof(command_message),
+                             "%s","Момент не записан: нужен активный стрим");
+                ++command_sequence;
+            }
+            if(dash_changes.audio_action)
+            {
+                int ok=0;
+                if(config->obs.enabled)
+                    ok=dashboard_obs_audio(config->obs.password,
+                       dash_changes.audio_input,
+                       dash_changes.audio_action==2,
+                       dash_changes.audio_mute,dash_changes.audio_volume);
+                snprintf(command_message,sizeof(command_message),
+                         "%s",ok?"Звук OBS изменён":"Не удалось изменить звук OBS");
+                ++command_sequence;
+                last_obs_poll=(DWORD)(GetTickCount()-15000UL);
             }
             if (changed && !dashboard_save_preferences(config))
                 log_warning("Dashboard controls applied, but could not save to data/");
@@ -4316,6 +4408,8 @@ static BotResult run_bot_loop(
 
             last_stream_check =
                 now;
+            if(result==BOT_OK)
+                dashboard_chart_observe(&view_chart,&dashboard_stream);
         }
         if (dashboard_stream.is_live)
         {
@@ -4346,6 +4440,12 @@ static BotResult run_bot_loop(
             last_obs_poll = GetTickCount();
         }
 
+        if(dashboard_running &&
+           (DWORD)(GetTickCount()-last_history_scan)>=60000UL)
+        {
+            dashboard_report_history(reports_history,sizeof(reports_history));
+            last_history_scan=GetTickCount();
+        }
         /* Copy only nonsecret public/aggregate fields for the local UI. */
         if (dashboard_running)
         {
@@ -4376,6 +4476,33 @@ static BotResult run_bot_loop(
                          "%s", g_music_current.title);
             dash_status.obs_state = obs_state;
             dash_status.obs_result_sequence = obs_result_sequence;
+            dash_status.command_seq = command_sequence;
+            snprintf(dash_status.command_result,
+                     sizeof(dash_status.command_result),"%s",command_message);
+            dash_status.chart=view_chart;
+            snprintf(dash_status.reports_history,sizeof(dash_status.reports_history),
+                     "%s",reports_history);
+            snprintf(dash_status.telegram_url,sizeof(dash_status.telegram_url),
+                     "%s",config->telegram.channel_url);
+            snprintf(dash_status.discord_url,sizeof(dash_status.discord_url),
+                     "%s",config->discord.invite_url);
+            snprintf(dash_status.telegram_chat_id,
+                     sizeof(dash_status.telegram_chat_id),"%s",
+                     config->telegram.chat_id);
+            dash_status.ai_cooldown=config->ai.cooldown_seconds;
+            dash_status.cooldown_normal=config->cooldowns.normal_seconds;
+            dash_status.cooldown_game=config->cooldowns.game_seconds;
+            dash_status.cooldown_bruh=config->cooldowns.bruh_seconds;
+            dash_status.sound_count=config->sound_count;
+            memcpy(dash_status.sounds,config->sounds,
+                   sizeof(config->sounds));
+            dash_status.queued_count=g_music_queue.count;
+            memcpy(dash_status.queued,g_music_queue.tracks,
+                   sizeof(g_music_queue.tracks));
+            if(g_music_current_valid)
+                snprintf(dash_status.current_requester,
+                         sizeof(dash_status.current_requester),
+                         "%s",g_music_current.requester);
             snprintf(dash_status.obs_result, sizeof(dash_status.obs_result),
                      "%s", obs_result);
             {
@@ -4710,7 +4837,11 @@ int app_run(
 
     /* UI toggles survive restarts without rewriting config.ini or OAuth. */
     if (config.dashboard.enabled)
+    {
+        dashboard_settings_load(&config);
         dashboard_load_preferences(&config);
+    }
+    command_cooldown_configure(&config.cooldowns);
 
     result =
         config_validate(
