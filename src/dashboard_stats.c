@@ -4,6 +4,20 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* UTC civil date to Unix days: platform-independent, no _mkgmtime link. */
+static long long days_from_civil(int y, unsigned int m, unsigned int d)
+{
+    int era;
+    unsigned int yoe, doy, doe, mp;
+    y-=m<=2;
+    era=(y>=0?y:y-399)/400;
+    yoe=(unsigned int)(y-era*400);
+    mp=m>2?m-3:m+9;
+    doy=(153*mp+2)/5+d-1;
+    doe=yoe*365+yoe/4-yoe/100+doy;
+    return (long long)era*146097+(long long)doe-719468;
+}
+
 void dashboard_chart_observe(DashboardChart *chart,const TwitchStream *stream)
 {
     if(!chart||!stream)return;
@@ -38,21 +52,24 @@ int dashboard_mark_moment(const TwitchStream *stream,const char *note,
 {
     char path[400],title[420],*p; FILE *f;
     time_t started=0;
-    struct tm tm_start;
+    int y=0,month=0,day=0,hour=0,minute=0,second=0;
     int seconds=-1,ok;
+    long long started=0;
     if(message && size)message[0]='\0';
     if(!stream || !stream->is_live || !id_ok(stream->id) ||
        !message || size<60)return 0;
-    memset(&tm_start,0,sizeof(tm_start));
     if(strlen(stream->started_at)>=19 &&
        sscanf(stream->started_at,"%d-%d-%dT%d:%d:%d",
-           &tm_start.tm_year,&tm_start.tm_mon,&tm_start.tm_mday,
-           &tm_start.tm_hour,&tm_start.tm_min,&tm_start.tm_sec)==6)
+              &y,&month,&day,&hour,&minute,&second)==6 &&
+       y>=1970 && y<2200 && month>=1 && month<=12 &&
+       day>=1 && day<=31 && hour>=0 && hour<=23 &&
+       minute>=0 && minute<=59 && second>=0 && second<=60)
     {
-        tm_start.tm_year-=1900;tm_start.tm_mon--;
-        /* Twitch started_at is UTC; _mkgmtime converts the UTC tm. */
-        started=_mkgmtime(&tm_start);
-        if(started>0 && now>=started)seconds=(int)(now-started);
+       started=days_from_civil(y,(unsigned)month,(unsigned)day)*86400LL +
+               hour*3600LL + minute*60LL + second;
+       if(started>0 && (long long)now>=started &&
+          (long long)now-started<=2147483647LL)
+           seconds=(int)((long long)now-started);
     }
     snprintf(path,sizeof(path),"data/stream_reports/stream_%s_markers.tsv",
              stream->id);
