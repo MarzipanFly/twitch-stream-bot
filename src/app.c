@@ -28,6 +28,7 @@
 #include "chat_promo.h"
 #include "stream_report.h"
 #include "dashboard.h"
+#include "dashboard_obs.h"
 #include "achievements.h"
 #include "youtube_metadata.h"
 
@@ -3768,6 +3769,10 @@ static BotResult run_bot_loop(
     TwitchStream dashboard_stream = {0};
     DashboardStatus dash_status = {0};
     DashboardChanges dash_changes;
+    DashboardObs obs_state = {0};
+    DWORD last_obs_poll = 0;
+    unsigned int obs_result_sequence = 0;
+    char obs_result[160] = "";
     DWORD dashboard_started_tick;
     int dashboard_peak = 0;
     char dashboard_peak_stream_id[TWITCH_STREAM_ID_SIZE] = "";
@@ -3854,6 +3859,9 @@ static BotResult run_bot_loop(
     dashboard_running = dashboard_start(config->dashboard.enabled,
                                          (unsigned short)config->dashboard.port);
     dashboard_started_tick = GetTickCount();
+    obs_state.recording = -1;
+    obs_state.streaming = -1;
+    last_obs_poll = (DWORD)(GetTickCount() - 15000UL);
 
     if (config->ai.enabled && !ai_chat_start(&config->ai))
         log_warning("Local AI worker could not start; !бот disabled");
@@ -3949,6 +3957,44 @@ static BotResult run_bot_loop(
                     config->stream_report.enabled = 0;
                     changed = 1;
                 }
+            }
+            if (dash_changes.obs_action != 0)
+            {
+                int ok = 0;
+                const char *operation = "OBS command";
+                if (!config->obs.enabled)
+                {
+                    snprintf(obs_result, sizeof(obs_result),
+                             "%s", "OBS отключён в config.ini");
+                }
+                else
+                {
+                    if (dash_changes.obs_action == 1)
+                    {
+                        operation = "Switch scene";
+                        ok = dashboard_obs_switch_scene(
+                            config->obs.password, dash_changes.obs_scene);
+                        snprintf(obs_result, sizeof(obs_result),
+                                 "Сцена %s: %s",
+                                 ok ? "переключена" : "не переключена",
+                                 dash_changes.obs_scene);
+                    }
+                    else
+                    {
+                        int start_record = dash_changes.obs_action == 2;
+                        operation = start_record ? "Start recording" : "Stop recording";
+                        ok = dashboard_obs_record(config->obs.password,
+                                                  start_record);
+                        snprintf(obs_result, sizeof(obs_result),
+                                 "%s", ok ? (start_record ?
+                                 "Запись запущена" : "Запись остановлена") :
+                                 "Не удалось изменить состояние записи OBS");
+                    }
+                    if (ok) log_info("Dashboard OBS: %s succeeded", operation);
+                    else log_warning("Dashboard OBS: %s failed", operation);
+                }
+                ++obs_result_sequence;
+                last_obs_poll = (DWORD)(GetTickCount() - 15000UL);
             }
             if (changed && !dashboard_save_preferences(config))
                 log_warning("Dashboard controls applied, but could not save to data/");
@@ -4284,6 +4330,22 @@ static BotResult run_bot_loop(
                 dashboard_peak = dashboard_stream.viewer_count;
         }
 
+        /* Refresh actual OBS WebSocket v5 status periodically; never assume
+         * enabled=true means OBS is connected. No scene switch is automatic. */
+        if (dashboard_running &&
+            (DWORD)(GetTickCount() - last_obs_poll) >= 15000UL)
+        {
+            if (config->obs.enabled)
+                dashboard_obs_refresh(config->obs.password, &obs_state);
+            else
+            {
+                memset(&obs_state, 0, sizeof(obs_state));
+                obs_state.recording = -1;
+                obs_state.streaming = -1;
+            }
+            last_obs_poll = GetTickCount();
+        }
+
         /* Copy only nonsecret public/aggregate fields for the local UI. */
         if (dashboard_running)
         {
@@ -4312,9 +4374,23 @@ static BotResult run_bot_loop(
             if (g_music_current_valid)
                 snprintf(dash_status.track, sizeof(dash_status.track),
                          "%s", g_music_current.title);
-            if (!viewer_profile_build_top(5, dash_status.top_viewers,
-                                           sizeof(dash_status.top_viewers)))
-                dash_status.top_viewers[0] = '\0';
+            dash_status.obs_state = obs_state;
+            dash_status.obs_result_sequence = obs_result_sequence;
+            snprintf(dash_status.obs_result, sizeof(dash_status.obs_result),
+                     "%s", obs_result);
+            {
+                ViewerTopEntry entries[DASHBOARD_LEADERS];
+                size_t i;
+                dash_status.leader_count =
+                    viewer_profile_get_top(DASHBOARD_LEADERS, entries);
+                for (i = 0; i < dash_status.leader_count; ++i)
+                {
+                    snprintf(dash_status.leaders[i].name,
+                             sizeof(dash_status.leaders[i].name),
+                             "%s", entries[i].name);
+                    dash_status.leaders[i].balance = entries[i].balance;
+                }
+            }
             dashboard_publish(&dash_status);
         }
 

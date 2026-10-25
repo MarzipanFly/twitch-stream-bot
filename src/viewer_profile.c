@@ -878,3 +878,40 @@ int viewer_profile_build_top(
 
     return 1;
 }
+
+/* Dashboard uses structured rows; keep legacy !топ chat text unchanged. */
+size_t viewer_profile_get_top(size_t limit, ViewerTopEntry *items)
+{
+    size_t indices[VIEWER_PROFILE_MAX_USERS];
+    size_t count = g_profile_count, i, j;
+    if (!items || !limit) return 0;
+    if (count > VIEWER_PROFILE_MAX_USERS) count = VIEWER_PROFILE_MAX_USERS;
+    for (i = 0; i < count; ++i) indices[i] = i;
+    for (i = 0; i < count; ++i)
+    {
+        size_t best = i;
+        for (j = i + 1; j < count; ++j)
+        {
+            ViewerProfile *candidate = &g_profiles[indices[j]];
+            ViewerProfile *current = &g_profiles[indices[best]];
+            if (candidate->balance > current->balance ||
+                (candidate->balance == current->balance &&
+                 strcmp(candidate->display_name, current->display_name) < 0))
+                best = j;
+        }
+        if (best != i)
+        {
+            size_t tmp = indices[i]; indices[i] = indices[best];
+            indices[best] = tmp;
+        }
+    }
+    if (limit > count) limit = count;
+    for (i = 0; i < limit; ++i)
+    {
+        ViewerProfile *p = &g_profiles[indices[i]];
+        snprintf(items[i].name, sizeof(items[i].name), "%s",
+                 p->display_name[0] ? p->display_name : p->login);
+        items[i].balance = p->balance;
+    }
+    return limit;
+}

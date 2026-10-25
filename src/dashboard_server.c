@@ -15,7 +15,7 @@
 #define DASHBOARD_PREFS_TMP "data/dashboard_controls.tmp"
 #define DASHBOARD_REQ_MAX 8192
 #define DASHBOARD_BODY_MAX 512
-#define DASHBOARD_JSON_MAX 6500
+#define DASHBOARD_JSON_MAX 19000
 #define DASHBOARD_HTML_MAX (96 * 1024)
 #define DASHBOARD_PORT_DEFAULT 8765
 
@@ -36,6 +36,8 @@ static DashboardServer g_dashboard;
 static void changes_reset(DashboardChanges *v)
 {
     v->ai = v->promo = v->reports = -1;
+    v->obs_action = 0;
+    v->obs_scene[0] = '\0';
 }
 void dashboard_load_preferences(AppConfig *cfg)
 {
@@ -115,7 +117,7 @@ static int json_quote(char *out, size_t cap, size_t *pos, const char *raw)
 static int status_json(char *json, size_t capacity)
 {
     DashboardStatus s;
-    size_t n = 0;
+    size_t n = 0, i;
     int len;
     EnterCriticalSection(&g_dashboard.lock);
     s = g_dashboard.status;
@@ -124,12 +126,16 @@ static int status_json(char *json, size_t capacity)
         "{\"live\":%s,\"viewers\":%d,\"chat\":%s,"
         "\"ai\":%s,\"promo\":%s,\"reports\":%s,\"obs\":%s,"
         "\"queue\":%u,\"profiles\":%u,\"peak\":%d,\"uptime\":%lu,"
-        "\"promo_min\":%u,\"promo_max\":%u,\"broadcaster\":",
+        "\"promo_min\":%u,\"promo_max\":%u,\"obs_connected\":%s,"
+        "\"obs_recording\":%d,\"obs_streaming\":%d,"
+        "\"obs_result_seq\":%u,\"broadcaster\":",
         s.live ? "true" : "false", s.viewers, s.chat_connected ? "true" : "false",
         s.ai_enabled ? "true" : "false", s.promo_enabled ? "true" : "false",
         s.reports_enabled ? "true" : "false", s.obs_enabled ? "true" : "false",
         (unsigned int)s.queue_count, (unsigned int)s.profile_count,
-        s.peak_observed, s.uptime_seconds, s.promo_min, s.promo_max);
+        s.peak_observed, s.uptime_seconds, s.promo_min, s.promo_max,
+        s.obs_state.connected ? "true" : "false",
+        s.obs_state.recording, s.obs_state.streaming, s.obs_result_sequence);
     if (len < 0 || (size_t)len >= capacity) return 0;
     n = (size_t)len;
     if (!json_quote(json,capacity,&n,s.broadcaster) ||
@@ -139,11 +145,31 @@ static int status_json(char *json, size_t capacity)
         !json_quote(json,capacity,&n,s.title) ||
         !json_append(json,capacity,&n,",\"track\":") ||
         !json_quote(json,capacity,&n,s.track) ||
-        !json_append(json,capacity,&n,",\"top\":") ||
-        !json_quote(json,capacity,&n,s.top_viewers) ||
-        !json_append(json,capacity,&n,"}"))
+        !json_append(json,capacity,&n,",\"obs_scene\":") ||
+        !json_quote(json,capacity,&n,s.obs_state.scene) ||
+        !json_append(json,capacity,&n,",\"obs_result\":") ||
+        !json_quote(json,capacity,&n,s.obs_result) ||
+        !json_append(json,capacity,&n,",\"obs_scenes\":["))
         return 0;
-    return 1;
+    for (i = 0; i < s.obs_state.scene_count && i < DASH_OBS_MAX_SCENES; ++i)
+    {
+        if (i && !json_append(json, capacity, &n, ",")) return 0;
+        if (!json_quote(json, capacity, &n, s.obs_state.scenes[i]))
+            return 0;
+    }
+    if (!json_append(json,capacity,&n,"],\"leaderboard\":["))
+        return 0;
+    for (i = 0; i < s.leader_count && i < DASHBOARD_LEADERS; ++i)
+    {
+        char value[60];
+        if (i && !json_append(json,capacity,&n,",")) return 0;
+        if (!json_append(json,capacity,&n,"{\"name\":") ||
+            !json_quote(json,capacity,&n,s.leaders[i].name))
+            return 0;
+        snprintf(value,sizeof(value),",\"balance\":%lld}",s.leaders[i].balance);
+        if (!json_append(json,capacity,&n,value)) return 0;
+    }
+    return json_append(json,capacity,&n,"]}");
 }
 
 static int starts_with(const char *data, const char *prefix)
@@ -263,11 +289,50 @@ static int valid_control_request(const char *req)
 }
 static int queue_setting(const char *body)
 {
-    const char *key = NULL;
-    const char *value;
+    const char *key = NULL, *value = NULL;
     int on;
     DashboardChanges *p = &g_dashboard.pending;
-    /* Strict whitelist, no URL-decoding, no arbitrary commands. */
+    /* Only these fixed command shapes are accepted; never URL-decode
+     * arbitrary scene names or accept raw OBS commands. */
+    if (starts_with(body, "action=scene&index="))
+    {
+        unsigned int index = 0;
+        char extra;
+        if (sscanf(body, "action=scene&index=%u%c", &index, &extra) != 1)
+            return 0;
+        EnterCriticalSection(&g_dashboard.lock);
+        if (index >= g_dashboard.status.obs_state.scene_count ||
+            index >= DASH_OBS_MAX_SCENES ||
+            !g_dashboard.status.obs_state.connected ||
+            p->obs_action)
+        {
+            LeaveCriticalSection(&g_dashboard.lock);
+            return 0;
+        }
+        p->obs_action = 1;
+        snprintf(p->obs_scene, sizeof(p->obs_scene), "%s",
+                 g_dashboard.status.obs_state.scenes[index]);
+        LeaveCriticalSection(&g_dashboard.lock);
+        return 1;
+    }
+    if (starts_with(body, "action=record&enabled="))
+    {
+        value = body + strlen("action=record&enabled=");
+        if ((value[0] != '0' && value[0] != '1') || value[1] != '\0')
+            return 0;
+        on = value[0] - '0';
+        EnterCriticalSection(&g_dashboard.lock);
+        if (!g_dashboard.status.obs_state.connected ||
+            g_dashboard.status.obs_state.recording == -1 ||
+            p->obs_action)
+        {
+            LeaveCriticalSection(&g_dashboard.lock);
+            return 0;
+        }
+        p->obs_action = on ? 2 : 3;
+        LeaveCriticalSection(&g_dashboard.lock);
+        return 1;
+    }
     if (starts_with(body, "feature=ai&enabled=")) key = "ai";
     if (starts_with(body, "feature=promo&enabled=")) key = "promo";
     if (starts_with(body, "feature=reports&enabled=")) key = "reports";
@@ -481,6 +546,6 @@ int dashboard_take_changes(DashboardChanges *changes)
     changes_reset(&g_dashboard.pending);
     LeaveCriticalSection(&g_dashboard.lock);
     pending = changes->ai != -1 || changes->promo != -1 ||
-              changes->reports != -1;
+              changes->reports != -1 || changes->obs_action != 0;
     return pending;
 }

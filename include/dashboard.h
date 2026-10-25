@@ -2,7 +2,14 @@
 #define DASHBOARD_H
 
 #include "config.h"
+#include "dashboard_obs.h"
 #include <stddef.h>
+
+#define DASHBOARD_LEADERS 5
+typedef struct {
+    char name[128];
+    long long balance;
+} DashboardLeader;
 
 /* Snapshot supplied by the bot main loop; no private Twitch tokens. */
 typedef struct
@@ -13,12 +20,18 @@ typedef struct
     size_t queue_count, profile_count;
     unsigned long uptime_seconds;
     char broadcaster[128], game[256], title[512], track[256];
-    char top_viewers[1500];
+    DashboardObs obs_state;
+    DashboardLeader leaders[DASHBOARD_LEADERS];
+    size_t leader_count;
+    unsigned int obs_result_sequence;
+    char obs_result[160];
 } DashboardStatus;
 
 typedef struct
 {
     int ai, promo, reports; /* -1 = unchanged, 0 = disable, 1 = enable */
+    int obs_action;  /* 0: none; 1: scene, 2: start record, 3: stop record */
+    char obs_scene[DASH_OBS_SCENE_LENGTH];
 } DashboardChanges;
 
 /* HTTP server on loopback only. Returns 0 if disabled/unavailable. */

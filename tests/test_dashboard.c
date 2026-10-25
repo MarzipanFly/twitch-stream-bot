@@ -57,6 +57,18 @@ int main(void)
         "X-Apelsin-Local: 1\r\n"
         "Content-Type: application/x-www-form-urlencoded\r\n"
         "Content-Length: 25\r\n\r\nfeature=reports&enabled=0";
+    const char *scene_change =
+        "POST /api/control HTTP/1.1\r\n"
+        "Host: 127.0.0.1:18765\r\nOrigin: http://127.0.0.1:18765\r\n"
+        "X-Apelsin-Local: 1\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "Content-Length: 20\r\n\r\naction=scene&index=1";
+    const char *record_stop =
+        "POST /api/control HTTP/1.1\r\n"
+        "Host: 127.0.0.1:18765\r\nOrigin: http://127.0.0.1:18765\r\n"
+        "X-Apelsin-Local: 1\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "Content-Length: 23\r\n\r\naction=record&enabled=0";
     const char *bad_host =
         "GET /api/status HTTP/1.1\r\n"
         "Host: malicious.example\r\nConnection: close\r\n\r\n";
@@ -79,12 +91,32 @@ int main(void)
     data.profile_count=17;
     strcpy(data.broadcaster,"aleg_opelsin1");
     strcpy(data.title,"Играю с <друзьями> & веселюсь");
+    data.obs_enabled=1;
+    data.obs_state.connected=1;
+    data.obs_state.recording=1;
+    data.obs_state.streaming=1;
+    data.obs_state.scene_count=2;
+    strcpy(data.obs_state.scene,"Игра");
+    strcpy(data.obs_state.scenes[0],"Игра");
+    strcpy(data.obs_state.scenes[1],"Перерыв");
+    data.leader_count=2;
+    strcpy(data.leaders[0].name,"Oleg");
+    data.leaders[0].balance=1700;
+    strcpy(data.leaders[1].name,"A<Bot>");
+    data.leaders[1].balance=500;
     dashboard_publish(&data);
     request(get,buffer,sizeof(buffer));
     assert(strstr(buffer,"200 OK"));
     assert(strstr(buffer,"\"viewers\":8"));
     assert(strstr(buffer,"\"profiles\":17"));
     assert(!strstr(buffer,"access_token"));
+    assert(strstr(buffer,"\"obs_connected\":true"));
+    assert(strstr(buffer,"\"obs_recording\":1"));
+    assert(strstr(buffer,"\"obs_scenes\":["));
+    assert(strstr(buffer,"Перерыв"));
+    assert(strstr(buffer,"\"leaderboard\":["));
+    assert(strstr(buffer,"\"balance\":1700"));
+    assert(strstr(buffer,"A<Bot>"));
 
     request(bad_host,buffer,sizeof(buffer));
     assert(strstr(buffer,"403 Forbidden"));
@@ -96,6 +128,19 @@ int main(void)
     assert(strstr(buffer,"202 Accepted"));
     assert(dashboard_take_changes(&change));
     assert(change.reports==0 && change.ai==-1 && change.promo==-1);
+    assert(!dashboard_take_changes(&change));
+
+    request(scene_change,buffer,sizeof(buffer));
+    assert(strstr(buffer,"202 Accepted"));
+    assert(dashboard_take_changes(&change));
+    assert(change.obs_action==1);
+    assert(strcmp(change.obs_scene,"Перерыв")==0);
+    assert(!dashboard_take_changes(&change));
+
+    request(record_stop,buffer,sizeof(buffer));
+    assert(strstr(buffer,"202 Accepted"));
+    assert(dashboard_take_changes(&change));
+    assert(change.obs_action==3);
     assert(!dashboard_take_changes(&change));
 
     dashboard_stop();

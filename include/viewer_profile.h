@@ -87,6 +87,15 @@ ViewerProfile *viewer_profile_get_or_create(
 size_t viewer_profile_count(void);
 
 
+typedef struct
+{
+    char name[VIEWER_PROFILE_NAME_SIZE];
+    long long balance;
+} ViewerTopEntry;
+
+/* Returns up to limit records, sorted by balance, without writing viewers.dat. */
+size_t viewer_profile_get_top(size_t limit, ViewerTopEntry *items);
+
 /*
  * Формирует текстовый рейтинг зрителей по балансу.
  *

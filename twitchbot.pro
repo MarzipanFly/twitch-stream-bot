@@ -29,6 +29,7 @@ SOURCES += \
     src/chat_promo.c \
     src/stream_report.c \
     src/dashboard_server.c \
+    src/dashboard_obs.c \
     src/ai_knowledge.c \
     src/ai_tactics.c \
     src/achievements.c \
@@ -70,6 +71,7 @@ HEADERS += \
     include/chat_promo.h \
     include/stream_report.h \
     include/dashboard.h \
+    include/dashboard_obs.h \
     include/ai_knowledge.h \
     include/ai_tactics.h \
     include/achievements.h \

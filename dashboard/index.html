@@ -15,6 +15,22 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
 .note{font-size:12px;color:var(--muted);margin:17px 0 0;line-height:1.65}.orange{color:var(--orange)}.top-viewers{white-space:pre-wrap;color:#e0dfec;font:13px/1.8 "Cascadia Code",Consolas,monospace;overflow-wrap:anywhere;margin:0}.no-data{color:var(--muted);font-size:13px}.foot{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;border-top:1px solid #38383f;padding-top:22px;color:var(--muted);font-size:12px;margin-top:8px}.foot a{color:var(--orange);text-decoration:none}.status-message{position:fixed;bottom:24px;right:24px;background:#28242a;border:1px solid #7d5337;border-radius:13px;padding:12px 18px;box-shadow:0 10px 35px #0006;font-size:13px;max-width:min(380px,calc(100vw - 30px));display:none}.status-message.show{display:block}
 @media(max-width:900px){.gridstats{grid-template-columns:repeat(2,1fr)}.columns{grid-template-columns:1fr}}
 @media(max-width:520px){.shell{width:calc(100% - 24px);padding-top:18px}.header{align-items:flex-start}.brand{gap:9px}.symbol{width:43px;height:43px;font-size:23px}.header-right{display:block;text-align:right}.header-right .tag{display:block;margin-bottom:6px}.gridstats{gap:9px}.card{padding:17px;min-height:117px}.metric{font-size:30px}.panel{padding:18px}.info{grid-template-columns:1fr}}
+/* Dashboard OBS controls and structured leaderboard */
+.obs-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.obs-select{width:100%;max-width:100%;background:var(--panel2);border:1px solid var(--edge);border-radius:11px;color:var(--text);padding:11px 12px;font:inherit;outline-offset:2px}
+.obs-select:disabled{opacity:.55}
+.actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:13px}
+.action-btn{padding:11px 16px;border:1px solid #805631;border-radius:10px;font:inherit;font-weight:600;font-size:13px;line-height:1.2;color:#201206;background:var(--orange);cursor:pointer}
+.action-btn.ghost{background:#28262b;color:#f3e1d4;border-color:#605359}
+.action-btn:disabled{cursor:not-allowed;opacity:.4}
+.obs-feedback{min-height:19px;font-size:12px;color:var(--muted);margin-top:11px}
+.rank-table{width:100%;border-collapse:collapse}
+.rank-table td{padding:10px 5px;border-bottom:1px solid var(--edge);font-size:14px;overflow-wrap:anywhere}
+.rank-table tr:last-child td{border-bottom:0}
+.rank-table td:nth-child(1){width:32px;color:var(--orange);font-weight:750}
+.rank-table td:nth-child(2){max-width:240px}
+.rank-table td:last-child{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+@media(max-width:520px){.action-btn{flex:1}}
 </style>
 <script defer src="/app.js"></script>
 </head>
@@ -45,7 +61,7 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
   </article>
   <article class="panel">
    <div class="section-head"><h2>Рейтинг апельсинов</h2><span class="minor">Топ по балансу</span></div>
-   <pre class="top-viewers" id="top">Загружаем…</pre>
+   <table class="rank-table" aria-label="Топ зрителей по апельсинам"><tbody id="leaderRows"><tr><td colspan="3">Загружаем…</td></tr></tbody></table>
   </article>
  </div>
  <div>
@@ -69,6 +85,24 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
     <div class="kv"><div class="k">Интервал объявлений</div><div class="v" id="promoPeriod">—</div></div>
    </div>
    <p class="note">Переключатели сохраняются локально в <span class="orange">data/dashboard_controls.ini</span>. Они не затрагивают токены, балансы и настройки OBS.</p>
+  </article>
+  <article class="panel">
+   <div class="section-head"><h2>Управление OBS</h2><span class="minor">WebSocket v5 · localhost</span></div>
+   <div class="obs-status">
+     <span id="obsConnection" class="tag">Не подключён</span>
+     <span id="obsStream" class="tag">Эфир: неизвестно</span>
+     <span id="obsRecord" class="tag">Запись: неизвестно</span>
+   </div>
+   <div class="kv"><div class="k">Активная сцена</div><div class="v" id="obsCurrentScene">—</div></div>
+   <div class="divider"></div>
+   <label class="eyebrow" for="obsSceneSelect">Выбрать сцену</label>
+   <select class="obs-select" id="obsSceneSelect" disabled><option value="">OBS недоступен</option></select>
+   <div class="actions">
+     <button id="obsSwitch" class="action-btn" disabled>Переключить сцену</button>
+     <button id="obsRecordButton" class="action-btn ghost" disabled>Начать запись</button>
+   </div>
+   <div class="obs-feedback" id="obsFeedback" role="status" aria-live="polite"></div>
+   <p class="note">Перед остановкой записи потребуется подтверждение. Запуск и завершение самой трансляции из панели не предусмотрены.</p>
   </article>
   <article class="panel">
    <div class="section-head"><h2>Быстрый доступ</h2><span class="minor">Данные на компьютере</span></div>
