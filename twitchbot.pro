@@ -50,6 +50,8 @@ SOURCES += \
     src/twitch_stream.c \
     src/viewer_profile.c \
     src/viewer_duel.c \
+    src/viewer_challenges.c \
+    src/viewer_challenge_chat.c \
     src/viewer_rank.c \
     third_party/cjson/cJSON.c
 
@@ -95,6 +97,8 @@ HEADERS += \
     include/twitch_user.h \
     include/viewer_profile.h \
     include/viewer_duel.h \
+    include/viewer_challenges.h \
+    include/viewer_challenge_chat.h \
     include/viewer_rank.h \
     third_party/cjson/cJSON.h
 

@@ -2,6 +2,8 @@
 
 #include "viewer_profile.h"
 #include "viewer_duel.h"
+#include "viewer_challenges.h"
+#include "viewer_challenge_chat.h"
 #include "logger.h"
 #include "config.h"
 #include "bot_result.h"
@@ -46,6 +48,9 @@
 #define STREAM_POLL_INTERVAL_SECONDS 30
 #define EVENTSUB_RECONNECT_DELAY_SECONDS 5
 #define BRUH_GLOBAL_COOLDOWN_MS (15UL * 1000UL)
+
+static ViewerChallenges g_viewer_challenges;
+static int g_viewer_challenges_enabled = 0;
 
 static DWORD g_last_bruh_tick = 0;
 static int g_bruh_played = 0;
@@ -2657,6 +2662,26 @@ static BotResult process_twitch_chat_notification(
         return BOT_OK;
     }
 
+    /*
+     * Viewer-paid stream challenges are handled separately from the duel
+     * commands (!принять / !отказ) and do not use the shared cooldown cache.
+     * One unfinished challenge per viewer is the effective spam limit.
+     */
+    if (viewer_challenge_chat_process(
+            g_viewer_challenges_enabled ? &g_viewer_challenges : NULL,
+            &chat_message, config->twitch.broadcaster_id,
+            config->bot.command_prefix, response, sizeof(response)))
+    {
+        result = twitch_chat_send_message(&config->twitch, response);
+        if (result == BOT_ERR_AUTH)
+        {
+            result = ensure_twitch_auth(config);
+            if (result == BOT_OK)
+                result = twitch_chat_send_message(&config->twitch, response);
+        }
+        return result;
+    }
+
     if (!chat_command_parse(
             chat_message.text,
             config->bot.command_prefix,
@@ -4805,6 +4830,14 @@ int app_run(
         "Viewer profiles loaded: %u",
         (unsigned int)viewer_profile_count()
     );
+    g_viewer_challenges_enabled =
+        viewer_challenges_init(&g_viewer_challenges);
+    if (!g_viewer_challenges_enabled)
+        log_error("Challenge queue could not be loaded; challenges disabled to protect data/challenges.dat");
+    else
+        log_info("Viewer challenge queue loaded: %u items",
+                 (unsigned int)g_viewer_challenges.count);
+
 
 
     /*

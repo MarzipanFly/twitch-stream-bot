@@ -43,3 +43,6 @@ tests/.tmp_dashboard/
 
 # Dashboard settings tests
 tests/.tmp_settings/
+
+# Viewer challenge regression test fixtures
+tests/.tmp_challenges/
