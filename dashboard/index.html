@@ -69,6 +69,18 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
    <div class="section-head"><h2>Рейтинг апельсинов</h2><span class="minor">Топ по балансу</span></div>
    <table class="rank-table" aria-label="Топ зрителей по апельсинам"><tbody id="leaderRows"><tr><td colspan="3">Загружаем…</td></tr></tbody></table>
   </article>
+  <article class="panel">
+   <div class="section-head"><h2>Маркеры клипов</h2><span class="minor">Сохраняются локально</span></div>
+   <p class="tiny">Отметить текущее время трансляции для нарезки клипов после стрима.</p>
+   <button id="markMoment" class="action-btn" disabled>★ Сохранить момент</button>
+  </article>
+  <article class="panel">
+   <div class="section-head"><h2>График зрителей</h2><span class="minor">До 120 наблюдений</span></div>
+   <svg class="chart-svg" viewBox="0 0 500 170" role="img" aria-label="Изменение количества зрителей"><path id="viewLine" fill="none" stroke="#ff9a33" stroke-width="3" d=""></path></svg>
+   <p id="chartSummary" class="tiny">Данные появятся во время стрима.</p>
+   <div class="divider"></div><div class="eyebrow">Сохранённые отчёты</div>
+   <pre class="top-viewers" id="reportHistory" style="white-space:pre-wrap">Нет данных</pre>
+  </article>
  </div>
  <div>
   <article class="panel">
@@ -122,18 +134,6 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
     <button id="musicClear" class="action-btn ghost">Очистить очередь</button>
    </div>
    <div id="musicList" class="list-body" style="margin-top:16px"></div>
-  </article>
-  <article class="panel">
-   <div class="section-head"><h2>Маркеры клипов</h2><span class="minor">Сохраняются локально</span></div>
-   <p class="tiny">Отметить текущее время трансляции для нарезки клипов после стрима.</p>
-   <button id="markMoment" class="action-btn" disabled>★ Сохранить момент</button>
-  </article>
-  <article class="panel">
-   <div class="section-head"><h2>График зрителей</h2><span class="minor">До 120 наблюдений</span></div>
-   <svg class="chart-svg" viewBox="0 0 500 170" role="img" aria-label="Изменение количества зрителей"><path id="viewLine" fill="none" stroke="#ff9a33" stroke-width="3" d=""></path></svg>
-   <p id="chartSummary" class="tiny">Данные появятся во время стрима.</p>
-   <div class="divider"></div><div class="eyebrow">Сохранённые отчёты</div>
-   <pre class="top-viewers" id="reportHistory" style="white-space:pre-wrap">Нет данных</pre>
   </article>
   <article class="panel">
    <div class="section-head"><h2>Быстрый доступ</h2><span class="minor">Данные на компьютере</span></div>
