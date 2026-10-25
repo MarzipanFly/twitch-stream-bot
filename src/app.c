@@ -26,6 +26,7 @@
 #include "music_worker.h"
 #include "ai_chat.h"
 #include "chat_promo.h"
+#include "stream_report.h"
 #include "achievements.h"
 #include "youtube_metadata.h"
 
@@ -3633,7 +3634,8 @@ static BotResult process_twitch_chat_notification(
  */
 static BotResult update_stream_state(
     AppConfig *config,
-    int *previous_live_state
+    int *previous_live_state,
+    StreamReport *stream_report
 )
 {
     TwitchStream current_stream = {0};
@@ -3723,6 +3725,9 @@ static BotResult update_stream_state(
 
     *previous_live_state =
         current_stream.is_live;
+    /* Report only confirmed Helix states, not failed polls. */
+    if (!stream_report_observe(stream_report, &current_stream, time(NULL)))
+        log_warning("Automatic Twitch stream report could not be updated");
     ai_chat_set_stream_context(&current_stream);
 
     return BOT_OK;
@@ -3755,6 +3760,7 @@ static BotResult run_bot_loop(
     TwitchEventSubMessageType message_type;
     TwitchStream initial_stream = {0};
     ChatPromo chat_promo = {0};
+    StreamReport stream_report = {0};
 
     BotResult result;
     BotResult chat_result;
@@ -3791,6 +3797,21 @@ static BotResult run_bot_loop(
 
     previous_live_state =
         initial_stream.is_live;
+
+    /* The data/ parent directory exists before run_bot_loop starts. */
+    if (config->stream_report.enabled)
+    {
+        result = platform_create_directory("data/stream_reports");
+        if (result != BOT_OK)
+            log_warning("Could not create stream_reports directory; reporting disabled");
+        stream_report_init(&stream_report, result == BOT_OK,
+                           "data/stream_reports");
+    }
+    if (stream_report.enabled &&
+        !stream_report_observe(&stream_report, &initial_stream, time(NULL)))
+        log_warning("Could not initialize stream report for active stream");
+    log_info("Automatic Twitch stream reports: %s",
+             stream_report.enabled ? "enabled" : "disabled");
 
     if (initial_stream.is_live)
     {
@@ -4149,7 +4170,8 @@ static BotResult run_bot_loop(
         {
             result = update_stream_state(
                 config,
-                &previous_live_state
+                &previous_live_state,
+                &stream_report
             );
 
             if (result != BOT_OK)

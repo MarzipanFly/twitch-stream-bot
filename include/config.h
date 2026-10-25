@@ -91,6 +91,12 @@ typedef struct
     unsigned int max_minutes;
 } PromoConfig;
 
+/* Automatic local stream report (no extra Twitch scopes required). */
+typedef struct
+{
+    int enabled;
+} StreamReportConfig;
+
 /* Configurable OBS sounds, UTF-8 command names without prefix. */
 #define SOUND_MAX_COUNT 16
 #define SOUND_NAME_SIZE 64
@@ -112,6 +118,7 @@ typedef struct
     ObsConfig obs;
     AiConfig ai;
     PromoConfig promo;
+    StreamReportConfig stream_report;
     SoundConfig sounds[SOUND_MAX_COUNT];
     size_t sound_count;
 

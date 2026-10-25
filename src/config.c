@@ -16,6 +16,7 @@ typedef enum
     SECTION_OBS,
     SECTION_AI,
     SECTION_PROMO,
+    SECTION_STREAM_REPORT,
     SECTION_SOUNDS
 
 } ConfigSection;
@@ -93,6 +94,7 @@ static ConfigSection parse_section(
     if (strcmp(line, "[obs]") == 0) return SECTION_OBS;
     if (strcmp(line, "[ai]") == 0) return SECTION_AI;
     if (strcmp(line, "[promo]") == 0) return SECTION_PROMO;
+    if (strcmp(line, "[stream_report]") == 0) return SECTION_STREAM_REPORT;
     if (strcmp(line, "[sounds]") == 0) return SECTION_SOUNDS;
 
     if (strcmp(line, "[bot]") == 0)
@@ -305,6 +307,12 @@ static void parse_key_value(
             }
             break;
 
+        case SECTION_STREAM_REPORT:
+            if (strcmp(key, "enabled") == 0)
+                config->stream_report.enabled =
+                    strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
+            break;
+
         case SECTION_SOUNDS:
         {
             /* command=OBS_input,cooldown_seconds,cost; legacy cost=0 */
@@ -418,6 +426,7 @@ BotResult config_load(
     config->promo.enabled = 1;
     config->promo.min_minutes = 5;
     config->promo.max_minutes = 10;
+    config->stream_report.enabled = 1;
 
     file = fopen(filename, "r");
 

@@ -27,6 +27,7 @@ SOURCES += \
     src/ai_game_scope.c \
     src/ai_semantic.c \
     src/chat_promo.c \
+    src/stream_report.c \
     src/ai_knowledge.c \
     src/ai_tactics.c \
     src/achievements.c \
@@ -66,6 +67,7 @@ HEADERS += \
     include/ai_game_scope.h \
     include/ai_semantic.h \
     include/chat_promo.h \
+    include/stream_report.h \
     include/ai_knowledge.h \
     include/ai_tactics.h \
     include/achievements.h \

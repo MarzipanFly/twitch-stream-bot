@@ -34,3 +34,6 @@ Makefile.*
 
 # Logs
 *.log
+
+# Temporary output from standalone report regression test
+tests/.tmp_stream_report/
