@@ -17,6 +17,7 @@ typedef enum
     SECTION_AI,
     SECTION_PROMO,
     SECTION_STREAM_REPORT,
+    SECTION_DASHBOARD,
     SECTION_SOUNDS
 
 } ConfigSection;
@@ -95,6 +96,7 @@ static ConfigSection parse_section(
     if (strcmp(line, "[ai]") == 0) return SECTION_AI;
     if (strcmp(line, "[promo]") == 0) return SECTION_PROMO;
     if (strcmp(line, "[stream_report]") == 0) return SECTION_STREAM_REPORT;
+    if (strcmp(line, "[dashboard]") == 0) return SECTION_DASHBOARD;
     if (strcmp(line, "[sounds]") == 0) return SECTION_SOUNDS;
 
     if (strcmp(line, "[bot]") == 0)
@@ -313,6 +315,20 @@ static void parse_key_value(
                     strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
             break;
 
+        case SECTION_DASHBOARD:
+            if (strcmp(key, "enabled") == 0)
+                config->dashboard.enabled =
+                    strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
+            else if (strcmp(key, "port") == 0)
+            {
+                unsigned int port;
+                char extra;
+                if (sscanf(value, "%u %c", &port, &extra) == 1 &&
+                    port >= 1024 && port <= 65535)
+                    config->dashboard.port = port;
+            }
+            break;
+
         case SECTION_SOUNDS:
         {
             /* command=OBS_input,cooldown_seconds,cost; legacy cost=0 */
@@ -427,6 +443,8 @@ BotResult config_load(
     config->promo.min_minutes = 5;
     config->promo.max_minutes = 10;
     config->stream_report.enabled = 1;
+    config->dashboard.enabled = 1;
+    config->dashboard.port = 8765;
 
     file = fopen(filename, "r");
 

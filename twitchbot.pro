@@ -28,6 +28,7 @@ SOURCES += \
     src/ai_semantic.c \
     src/chat_promo.c \
     src/stream_report.c \
+    src/dashboard_server.c \
     src/ai_knowledge.c \
     src/ai_tactics.c \
     src/achievements.c \
@@ -68,6 +69,7 @@ HEADERS += \
     include/ai_semantic.h \
     include/chat_promo.h \
     include/stream_report.h \
+    include/dashboard.h \
     include/ai_knowledge.h \
     include/ai_tactics.h \
     include/achievements.h \
@@ -91,6 +93,7 @@ HEADERS += \
     third_party/cjson/cJSON.h
 
 win32-g++ {
+    LIBS += -lws2_32
     LIBS += -lwinhttp
     LIBS += -lm
     LIBS += -lcrypt32
@@ -98,12 +101,15 @@ win32-g++ {
 }
 
 win32-msvc* {
+    LIBS += Ws2_32.lib
     LIBS += Winhttp.lib
     LIBS += Crypt32.lib
     LIBS += Advapi32.lib
 }
 
 DISTFILES += \
-    config.ini
+    config.ini \
+    dashboard/index.html \
+    dashboard/app.js
 
 VERSION = 0.8.0.0

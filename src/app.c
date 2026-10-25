@@ -27,6 +27,7 @@
 #include "ai_chat.h"
 #include "chat_promo.h"
 #include "stream_report.h"
+#include "dashboard.h"
 #include "achievements.h"
 #include "youtube_metadata.h"
 
@@ -3635,7 +3636,8 @@ static BotResult process_twitch_chat_notification(
 static BotResult update_stream_state(
     AppConfig *config,
     int *previous_live_state,
-    StreamReport *stream_report
+    StreamReport *stream_report,
+    TwitchStream *dashboard_stream
 )
 {
     TwitchStream current_stream = {0};
@@ -3729,6 +3731,8 @@ static BotResult update_stream_state(
     if (!stream_report_observe(stream_report, &current_stream, time(NULL)))
         log_warning("Automatic Twitch stream report could not be updated");
     ai_chat_set_stream_context(&current_stream);
+    if (dashboard_stream)
+        *dashboard_stream = current_stream;
 
     return BOT_OK;
 }
@@ -3761,6 +3765,13 @@ static BotResult run_bot_loop(
     TwitchStream initial_stream = {0};
     ChatPromo chat_promo = {0};
     StreamReport stream_report = {0};
+    TwitchStream dashboard_stream = {0};
+    DashboardStatus dash_status = {0};
+    DashboardChanges dash_changes;
+    DWORD dashboard_started_tick;
+    int dashboard_peak = 0;
+    char dashboard_peak_stream_id[TWITCH_STREAM_ID_SIZE] = "";
+    int dashboard_running = 0;
 
     BotResult result;
     BotResult chat_result;
@@ -3797,6 +3808,12 @@ static BotResult run_bot_loop(
 
     previous_live_state =
         initial_stream.is_live;
+    dashboard_stream = initial_stream;
+    dashboard_peak = initial_stream.is_live ? initial_stream.viewer_count : 0;
+    if (initial_stream.is_live)
+        snprintf(dashboard_peak_stream_id,
+                 sizeof(dashboard_peak_stream_id),
+                 "%s", initial_stream.id);
 
     /* The data/ parent directory exists before run_bot_loop starts. */
     if (config->stream_report.enabled)
@@ -3834,6 +3851,10 @@ static BotResult run_bot_loop(
         "Main bot loop started"
     );
 
+    dashboard_running = dashboard_start(config->dashboard.enabled,
+                                         (unsigned short)config->dashboard.port);
+    dashboard_started_tick = GetTickCount();
+
     if (config->ai.enabled && !ai_chat_start(&config->ai))
         log_warning("Local AI worker could not start; !бот disabled");
     ai_chat_set_stream_context(&initial_stream);
@@ -3869,6 +3890,70 @@ static BotResult run_bot_loop(
 
     while (!stop_requested())
     {
+        /* The dashboard worker never mutates config directly. All requested
+         * changes are applied here on the main thread. */
+        if (dashboard_running && dashboard_take_changes(&dash_changes))
+        {
+            int changed = 0;
+            if (dash_changes.ai != -1 && config->ai.enabled != dash_changes.ai)
+            {
+                if (dash_changes.ai)
+                {
+                    AiConfig new_ai_config = config->ai;
+                    new_ai_config.enabled = 1;
+                    if (ai_chat_start(&new_ai_config))
+                    {
+                        config->ai.enabled = 1;
+                        ai_chat_set_stream_context(&dashboard_stream);
+                        log_info("Dashboard enabled AI");
+                        changed = 1;
+                    }
+                    else log_warning("Dashboard: unable to start AI worker");
+                }
+                else
+                {
+                    config->ai.enabled = 0;
+                    ai_chat_stop();
+                    log_info("Dashboard disabled AI");
+                    changed = 1;
+                }
+            }
+            if (dash_changes.promo != -1 &&
+                config->promo.enabled != dash_changes.promo)
+            {
+                config->promo.enabled = dash_changes.promo;
+                log_info("Dashboard: periodic promotions %s",
+                         config->promo.enabled ? "ON" : "OFF");
+                changed = 1;
+            }
+            if (dash_changes.reports != -1 &&
+                config->stream_report.enabled != dash_changes.reports)
+            {
+                if (dash_changes.reports)
+                {
+                    if (platform_create_directory("data/stream_reports") == BOT_OK)
+                    {
+                        stream_report_init(&stream_report, 1,
+                                           "data/stream_reports");
+                        if (!stream_report_observe(&stream_report,
+                                                    &dashboard_stream, time(NULL)))
+                            log_warning("Dashboard: stream report reinitialization failed");
+                        config->stream_report.enabled = 1;
+                        changed = 1;
+                    }
+                    else log_warning("Dashboard: report folder could not be created");
+                }
+                else
+                {
+                    stream_report.enabled = 0;
+                    config->stream_report.enabled = 0;
+                    changed = 1;
+                }
+            }
+            if (changed && !dashboard_save_preferences(config))
+                log_warning("Dashboard controls applied, but could not save to data/");
+        }
+
         /*
          * ----------------------------------------------------
          * EVENTSUB CONNECT / RECONNECT
@@ -4171,7 +4256,8 @@ static BotResult run_bot_loop(
             result = update_stream_state(
                 config,
                 &previous_live_state,
-                &stream_report
+                &stream_report,
+                &dashboard_stream
             );
 
             if (result != BOT_OK)
@@ -4184,6 +4270,52 @@ static BotResult run_bot_loop(
 
             last_stream_check =
                 now;
+        }
+        if (dashboard_stream.is_live)
+        {
+            if (strcmp(dashboard_peak_stream_id, dashboard_stream.id) != 0)
+            {
+                snprintf(dashboard_peak_stream_id,
+                         sizeof(dashboard_peak_stream_id),
+                         "%s", dashboard_stream.id);
+                dashboard_peak = 0; /* New Twitch stream, new peak. */
+            }
+            if (dashboard_stream.viewer_count > dashboard_peak)
+                dashboard_peak = dashboard_stream.viewer_count;
+        }
+
+        /* Copy only nonsecret public/aggregate fields for the local UI. */
+        if (dashboard_running)
+        {
+            memset(&dash_status, 0, sizeof(dash_status));
+            dash_status.live = dashboard_stream.is_live;
+            dash_status.viewers = dashboard_stream.is_live ?
+                                  dashboard_stream.viewer_count : 0;
+            dash_status.chat_connected = chat_connected;
+            dash_status.ai_enabled = config->ai.enabled && ai_chat_running();
+            dash_status.promo_enabled = config->promo.enabled;
+            dash_status.reports_enabled = config->stream_report.enabled;
+            dash_status.obs_enabled = config->obs.enabled;
+            dash_status.peak_observed = dashboard_peak;
+            dash_status.promo_min = config->promo.min_minutes;
+            dash_status.promo_max = config->promo.max_minutes;
+            dash_status.queue_count = music_queue_size(&g_music_queue);
+            dash_status.profile_count = viewer_profile_count();
+            dash_status.uptime_seconds = (unsigned long)
+                ((DWORD)(GetTickCount() - dashboard_started_tick) / 1000UL);
+            snprintf(dash_status.broadcaster, sizeof(dash_status.broadcaster),
+                     "%s", config->twitch.broadcaster_login);
+            snprintf(dash_status.game, sizeof(dash_status.game),
+                     "%s", dashboard_stream.game_name);
+            snprintf(dash_status.title, sizeof(dash_status.title),
+                     "%s", dashboard_stream.title);
+            if (g_music_current_valid)
+                snprintf(dash_status.track, sizeof(dash_status.track),
+                         "%s", g_music_current.title);
+            if (!viewer_profile_build_top(5, dash_status.top_viewers,
+                                           sizeof(dash_status.top_viewers)))
+                dash_status.top_viewers[0] = '\0';
+            dashboard_publish(&dash_status);
         }
 
         /*
@@ -4269,6 +4401,7 @@ static BotResult run_bot_loop(
 		}
     }
 
+    dashboard_stop();
     ai_chat_stop();
 
     twitch_eventsub_ws_close(
@@ -4498,6 +4631,10 @@ int app_run(
         return 1;
     }
 
+
+    /* UI toggles survive restarts without rewriting config.ini or OAuth. */
+    if (config.dashboard.enabled)
+        dashboard_load_preferences(&config);
 
     result =
         config_validate(

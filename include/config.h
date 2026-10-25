@@ -97,6 +97,13 @@ typedef struct
     int enabled;
 } StreamReportConfig;
 
+/* Loopback-only Web dashboard; disabled when local port is unavailable. */
+typedef struct
+{
+    int enabled;
+    unsigned int port;
+} DashboardConfig;
+
 /* Configurable OBS sounds, UTF-8 command names without prefix. */
 #define SOUND_MAX_COUNT 16
 #define SOUND_NAME_SIZE 64
@@ -119,6 +126,7 @@ typedef struct
     AiConfig ai;
     PromoConfig promo;
     StreamReportConfig stream_report;
+    DashboardConfig dashboard;
     SoundConfig sounds[SOUND_MAX_COUNT];
     size_t sound_count;
 

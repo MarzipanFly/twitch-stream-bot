@@ -37,3 +37,6 @@ Makefile.*
 
 # Temporary output from standalone report regression test
 tests/.tmp_stream_report/
+
+# Dashboard smoke test fixtures
+tests/.tmp_dashboard/

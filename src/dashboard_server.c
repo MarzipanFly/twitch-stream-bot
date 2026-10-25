@@ -1,0 +1,486 @@
+/* Native WinSock loopback dashboard for ApelsinBot (pure C / MinGW).
+ * Never bind to 0.0.0.0; only serve a static local page and tiny JSON API.
+ */
+#include "dashboard.h"
+#include "logger.h"
+
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define DASHBOARD_PREFS "data/dashboard_controls.ini"
+#define DASHBOARD_PREFS_TMP "data/dashboard_controls.tmp"
+#define DASHBOARD_REQ_MAX 8192
+#define DASHBOARD_BODY_MAX 512
+#define DASHBOARD_JSON_MAX 6500
+#define DASHBOARD_HTML_MAX (96 * 1024)
+#define DASHBOARD_PORT_DEFAULT 8765
+
+typedef struct
+{
+    CRITICAL_SECTION lock;
+    HANDLE thread;
+    volatile LONG running;
+    SOCKET listener;
+    int started;
+    unsigned short port;
+    DashboardStatus status;
+    DashboardChanges pending;
+} DashboardServer;
+
+static DashboardServer g_dashboard;
+
+static void changes_reset(DashboardChanges *v)
+{
+    v->ai = v->promo = v->reports = -1;
+}
+void dashboard_load_preferences(AppConfig *cfg)
+{
+    FILE *f;
+    char line[100];
+    if (!cfg) return;
+    f = fopen(DASHBOARD_PREFS, "rb");
+    if (!f) return;
+    while (fgets(line, sizeof(line), f))
+    {
+        int x;
+        if (sscanf(line, "ai=%d", &x) == 1 && (x == 0 || x == 1))
+            cfg->ai.enabled = x;
+        if (sscanf(line, "promo=%d", &x) == 1 && (x == 0 || x == 1))
+            cfg->promo.enabled = x;
+        if (sscanf(line, "reports=%d", &x) == 1 && (x == 0 || x == 1))
+            cfg->stream_report.enabled = x;
+    }
+    fclose(f);
+    log_info("Local dashboard saved controls loaded");
+}
+int dashboard_save_preferences(const AppConfig *cfg)
+{
+    FILE *f;
+    int good;
+    if (!cfg) return 0;
+    f = fopen(DASHBOARD_PREFS_TMP, "wb");
+    if (!f) return 0;
+    good = fprintf(f, "ai=%d\npromo=%d\nreports=%d\n",
+                   cfg->ai.enabled != 0, cfg->promo.enabled != 0,
+                   cfg->stream_report.enabled != 0) > 0;
+    if (fclose(f) != 0) good = 0;
+    if (!good || !MoveFileExA(DASHBOARD_PREFS_TMP, DASHBOARD_PREFS,
+                              MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+    {
+        DeleteFileA(DASHBOARD_PREFS_TMP);
+        return 0;
+    }
+    return 1;
+}
+static int json_append(char *out, size_t cap, size_t *pos, const char *s)
+{
+    size_t n = strlen(s);
+    if (*pos + n >= cap) return 0;
+    memcpy(out + *pos, s, n+1);
+    *pos += n;
+    return 1;
+}
+static int json_quote(char *out, size_t cap, size_t *pos, const char *raw)
+{
+    const unsigned char *p = (const unsigned char *)(raw ? raw : "");
+    if (!json_append(out, cap, pos, "\"")) return 0;
+    while (*p)
+    {
+        char escaped[8];
+        if (*p == '"' || *p == '\\')
+        {
+            escaped[0] = '\\'; escaped[1] = (char)*p;
+            escaped[2] = '\0';
+            if (!json_append(out, cap, pos, escaped)) return 0;
+        }
+        else if (*p < 32 || *p == 127)
+        {
+            snprintf(escaped, sizeof(escaped), "\\u%04x", (unsigned int)*p);
+            if (!json_append(out, cap, pos, escaped)) return 0;
+        }
+        else
+        {
+            if (*pos + 2 >= cap) return 0;
+            out[(*pos)++] = (char)*p;
+            out[*pos] = '\0';
+        }
+        ++p;
+    }
+    return json_append(out, cap, pos, "\"");
+}
+static int status_json(char *json, size_t capacity)
+{
+    DashboardStatus s;
+    size_t n = 0;
+    int len;
+    EnterCriticalSection(&g_dashboard.lock);
+    s = g_dashboard.status;
+    LeaveCriticalSection(&g_dashboard.lock);
+    len = snprintf(json, capacity,
+        "{\"live\":%s,\"viewers\":%d,\"chat\":%s,"
+        "\"ai\":%s,\"promo\":%s,\"reports\":%s,\"obs\":%s,"
+        "\"queue\":%u,\"profiles\":%u,\"peak\":%d,\"uptime\":%lu,"
+        "\"promo_min\":%u,\"promo_max\":%u,\"broadcaster\":",
+        s.live ? "true" : "false", s.viewers, s.chat_connected ? "true" : "false",
+        s.ai_enabled ? "true" : "false", s.promo_enabled ? "true" : "false",
+        s.reports_enabled ? "true" : "false", s.obs_enabled ? "true" : "false",
+        (unsigned int)s.queue_count, (unsigned int)s.profile_count,
+        s.peak_observed, s.uptime_seconds, s.promo_min, s.promo_max);
+    if (len < 0 || (size_t)len >= capacity) return 0;
+    n = (size_t)len;
+    if (!json_quote(json,capacity,&n,s.broadcaster) ||
+        !json_append(json,capacity,&n,",\"game\":") ||
+        !json_quote(json,capacity,&n,s.game) ||
+        !json_append(json,capacity,&n,",\"title\":") ||
+        !json_quote(json,capacity,&n,s.title) ||
+        !json_append(json,capacity,&n,",\"track\":") ||
+        !json_quote(json,capacity,&n,s.track) ||
+        !json_append(json,capacity,&n,",\"top\":") ||
+        !json_quote(json,capacity,&n,s.top_viewers) ||
+        !json_append(json,capacity,&n,"}"))
+        return 0;
+    return 1;
+}
+
+static int starts_with(const char *data, const char *prefix)
+{
+    return strncmp(data, prefix, strlen(prefix)) == 0;
+}
+static const char *header_value(const char *req, const char *name)
+{
+    const char *p = req;
+    const size_t length = strlen(name);
+    while ((p = strstr(p, "\r\n")) != NULL)
+    {
+        p += 2;
+        if (*p == '\r' || *p == '\0') break;
+        if (_strnicmp(p, name, length) == 0 && p[length] == ':')
+        {
+            p += length+1;
+            while (*p == ' ' || *p == '\t') ++p;
+            return p;
+        }
+    }
+    return NULL;
+}
+static int header_equals(const char *request, const char *name, const char *value)
+{
+    const char *p = header_value(request, name);
+    size_t len = strlen(value);
+    return p && strncmp(p,value,len) == 0 && p[len] == '\r';
+}
+static int send_all(SOCKET socket, const char *data, size_t length)
+{
+    size_t sent = 0;
+    while (sent < length)
+    {
+        int n = send(socket, data + sent, (int)(length-sent), 0);
+        if (n == SOCKET_ERROR || !n) return 0;
+        sent += (size_t)n;
+    }
+    return 1;
+}
+static void http_reply(SOCKET sock, int status, const char *type,
+                       const char *body, size_t length)
+{
+    char headers[720];
+    int n = snprintf(headers, sizeof(headers),
+        "HTTP/1.1 %d %s\r\n"
+        "Content-Type: %s\r\n"
+        "Content-Length: %u\r\n"
+        "Cache-Control: no-store\r\n"
+        "X-Content-Type-Options: nosniff\r\n"
+        "X-Frame-Options: DENY\r\n"
+        "Referrer-Policy: no-referrer\r\n"
+        "Content-Security-Policy: default-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self'; "
+        "connect-src 'self'; img-src 'self' data:; object-src 'none'; "
+        "base-uri 'none'; frame-ancestors 'none'\r\n"
+        "Connection: close\r\n\r\n",
+        status,
+        status == 200 ? "OK" : status == 202 ? "Accepted" :
+        status == 403 ? "Forbidden" : status == 404 ? "Not Found" :
+        status == 405 ? "Method Not Allowed" : "Bad Request",
+        type, (unsigned int)length);
+    if (n <= 0 || (size_t)n >= sizeof(headers)) return;
+    if (!send_all(sock, headers, (size_t)n)) return;
+    send_all(sock, body, length);
+}
+static int load_asset(const char *file, char **html, size_t *length)
+{
+    static const char *prefixes[] = {
+        "dashboard/", "../twitch-stream-bot/dashboard/", "../dashboard/"
+    };
+    char file_path[3][MAX_PATH];
+    size_t i;
+    FILE *f = NULL;
+    long n;
+    *html = NULL;
+    *length = 0;
+    if (strcmp(file, "index.html") && strcmp(file, "app.js")) return 0;
+    for (i = 0; i < sizeof(prefixes)/sizeof(prefixes[0]); ++i)
+    {
+        snprintf(file_path[i], sizeof(file_path[i]), "%s%s", prefixes[i], file);
+        if ((f = fopen(file_path[i], "rb")) != NULL) break;
+    }
+    if (!f) return 0;
+    if (fseek(f, 0, SEEK_END) != 0 || (n = ftell(f)) <= 0 ||
+        n > DASHBOARD_HTML_MAX || fseek(f, 0, SEEK_SET) != 0)
+    {
+        fclose(f); return 0;
+    }
+    *html = (char *)malloc((size_t)n);
+    if (!*html) { fclose(f); return 0; }
+    if (fread(*html, 1, (size_t)n, f) != (size_t)n)
+    {
+        free(*html); *html = NULL; fclose(f); return 0;
+    }
+    fclose(f);
+    *length = (size_t)n;
+    return 1;
+}
+static int valid_local_request(const char *req)
+{
+    char expected[64];
+    const char *host = header_value(req, "Host");
+    snprintf(expected, sizeof(expected), "127.0.0.1:%u", g_dashboard.port);
+    return host && strncmp(host, expected, strlen(expected)) == 0 &&
+           host[strlen(expected)] == '\r';
+}
+static int valid_control_request(const char *req)
+{
+    char expected[128];
+    snprintf(expected, sizeof(expected),
+             "http://127.0.0.1:%u", g_dashboard.port);
+    return header_equals(req, "Origin", expected) &&
+           header_equals(req, "X-Apelsin-Local", "1") &&
+           header_equals(req, "Content-Type",
+                         "application/x-www-form-urlencoded");
+}
+static int queue_setting(const char *body)
+{
+    const char *key = NULL;
+    const char *value;
+    int on;
+    DashboardChanges *p = &g_dashboard.pending;
+    /* Strict whitelist, no URL-decoding, no arbitrary commands. */
+    if (starts_with(body, "feature=ai&enabled=")) key = "ai";
+    if (starts_with(body, "feature=promo&enabled=")) key = "promo";
+    if (starts_with(body, "feature=reports&enabled=")) key = "reports";
+    if (!key) return 0;
+    value = strstr(body, "&enabled=") + 9;
+    if ((value[0] != '0' && value[0] != '1') || value[1] != '\0')
+        return 0;
+    on = value[0] - '0';
+    EnterCriticalSection(&g_dashboard.lock);
+    if (!strcmp(key,"ai")) p->ai = on;
+    if (!strcmp(key,"promo")) p->promo = on;
+    if (!strcmp(key,"reports")) p->reports = on;
+    LeaveCriticalSection(&g_dashboard.lock);
+    return 1;
+}
+static void handle_connection(SOCKET client)
+{
+    char request[DASHBOARD_REQ_MAX+1];
+    char *body;
+    char payload[DASHBOARD_JSON_MAX];
+    int received, cl = 0;
+    DWORD timeout = 2500;
+    const char *len;
+    size_t used = 0;
+    int is_get = 0, is_post = 0;
+    setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, (const char *)&timeout,
+               sizeof(timeout));
+    for (;;)
+    {
+        received = recv(client, request + used,
+                        (int)(DASHBOARD_REQ_MAX-used), 0);
+        if (received <= 0) return;
+        used += (size_t)received;
+        request[used] = '\0';
+        body = strstr(request, "\r\n\r\n");
+        if (body) break;
+        if (used >= DASHBOARD_REQ_MAX) return;
+    }
+    if (!valid_local_request(request))
+    {
+        http_reply(client,403,"text/plain; charset=utf-8","Forbidden",9);
+        return;
+    }
+    is_get = starts_with(request,"GET ");
+    is_post = starts_with(request,"POST ");
+    if (is_get && (starts_with(request,"GET / ") ||
+                   starts_with(request,"GET /index.html ")))
+    {
+        char *html = NULL;
+        size_t html_len = 0;
+        if (load_asset("index.html", &html, &html_len))
+        {
+            http_reply(client,200,"text/html; charset=utf-8",html,html_len);
+            free(html);
+        }
+        else
+            http_reply(client,404,"text/plain; charset=utf-8",
+                       "dashboard/index.html not found",30);
+    }
+    else if (is_get && starts_with(request,"GET /app.js "))
+    {
+        char *js = NULL;
+        size_t js_len = 0;
+        if (load_asset("app.js", &js, &js_len))
+        {
+            http_reply(client,200,"text/javascript; charset=utf-8",js,js_len);
+            free(js);
+        }
+        else http_reply(client,404,"text/plain; charset=utf-8",
+                        "dashboard/app.js not found",26);
+    }
+    else if (is_get && starts_with(request,"GET /api/status "))
+    {
+        if (status_json(payload,sizeof(payload)))
+            http_reply(client,200,"application/json; charset=utf-8",
+                       payload,strlen(payload));
+        else
+            http_reply(client,400,"application/json; charset=utf-8",
+                       "{}",2);
+    }
+    else if (is_post && starts_with(request,"POST /api/control "))
+    {
+        if (!valid_control_request(request))
+        {
+            http_reply(client,403,"application/json; charset=utf-8",
+                       "{\"error\":\"forbidden\"}",21);
+            return;
+        }
+        len = header_value(request,"Content-Length");
+        if (!len || sscanf(len,"%d",&cl) != 1 || cl < 1 ||
+            cl > DASHBOARD_BODY_MAX)
+        {
+            http_reply(client,400,"application/json; charset=utf-8",
+                       "{\"error\":\"length\"}",18);
+            return;
+        }
+        body += 4;
+        {
+            size_t buffered = used-(size_t)(body-request);
+            while (buffered < (size_t)cl && used < DASHBOARD_REQ_MAX)
+            {
+                received = recv(client,request+used,
+                                (int)(DASHBOARD_REQ_MAX-used),0);
+                if (received <= 0) return;
+                used += (size_t)received;
+                buffered += (size_t)received;
+            }
+            if (buffered < (size_t)cl) return;
+            body[cl] = '\0';
+        }
+        if (queue_setting(body))
+            http_reply(client,202,"application/json; charset=utf-8",
+                       "{\"queued\":true}",15);
+        else
+            http_reply(client,400,"application/json; charset=utf-8",
+                       "{\"error\":\"invalid\"}",19);
+    }
+    else if (is_get || is_post)
+        http_reply(client,404,"text/plain; charset=utf-8","Not found",9);
+    else
+        http_reply(client,405,"text/plain; charset=utf-8",
+                   "Method not allowed",18);
+}
+static DWORD WINAPI server_thread(LPVOID unused)
+{
+    (void)unused;
+    while (InterlockedCompareExchange(&g_dashboard.running,0,0))
+    {
+        fd_set readfds;
+        struct timeval wait = {0,250000};
+        int n;
+        FD_ZERO(&readfds);
+        FD_SET(g_dashboard.listener,&readfds);
+        n = select(0,&readfds,NULL,NULL,&wait);
+        if (n > 0)
+        {
+            SOCKET peer = accept(g_dashboard.listener,NULL,NULL);
+            if (peer != INVALID_SOCKET)
+            {
+                handle_connection(peer);
+                closesocket(peer);
+            }
+        }
+    }
+    return 0;
+}
+int dashboard_start(int enabled, unsigned short port)
+{
+    struct sockaddr_in addr;
+    WSADATA ws;
+    SOCKET sock;
+    if (!enabled) return 0;
+    memset(&g_dashboard,0,sizeof(g_dashboard));
+    if (WSAStartup(MAKEWORD(2,2),&ws) != 0) return 0;
+    sock = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
+    if (sock == INVALID_SOCKET) { WSACleanup(); return 0; }
+    memset(&addr,0,sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(port ? port : DASHBOARD_PORT_DEFAULT);
+    if (bind(sock,(struct sockaddr*)&addr,sizeof(addr)) == SOCKET_ERROR ||
+        listen(sock,5) == SOCKET_ERROR)
+    {
+        closesocket(sock); WSACleanup();
+        log_warning("Dashboard unable to bind 127.0.0.1:%u",
+                    (unsigned int)(port ? port : DASHBOARD_PORT_DEFAULT));
+        return 0;
+    }
+    InitializeCriticalSection(&g_dashboard.lock);
+    changes_reset(&g_dashboard.pending);
+    g_dashboard.listener = sock;
+    g_dashboard.port = port ? port : DASHBOARD_PORT_DEFAULT;
+    InterlockedExchange(&g_dashboard.running,1);
+    g_dashboard.thread = CreateThread(NULL,0,server_thread,NULL,0,NULL);
+    if (!g_dashboard.thread)
+    {
+        closesocket(sock);
+        DeleteCriticalSection(&g_dashboard.lock);
+        WSACleanup();
+        return 0;
+    }
+    g_dashboard.started = 1;
+    log_info("Apelsin dashboard: http://127.0.0.1:%u",
+             (unsigned int)g_dashboard.port);
+    return 1;
+}
+void dashboard_stop(void)
+{
+    if (!g_dashboard.started) return;
+    InterlockedExchange(&g_dashboard.running,0);
+    WaitForSingleObject(g_dashboard.thread,6000);
+    CloseHandle(g_dashboard.thread);
+    closesocket(g_dashboard.listener);
+    DeleteCriticalSection(&g_dashboard.lock);
+    WSACleanup();
+    g_dashboard.started = 0;
+}
+void dashboard_publish(const DashboardStatus *status)
+{
+    if (!status || !g_dashboard.started) return;
+    EnterCriticalSection(&g_dashboard.lock);
+    g_dashboard.status = *status;
+    LeaveCriticalSection(&g_dashboard.lock);
+}
+int dashboard_take_changes(DashboardChanges *changes)
+{
+    int pending;
+    if (!changes || !g_dashboard.started) return 0;
+    EnterCriticalSection(&g_dashboard.lock);
+    *changes = g_dashboard.pending;
+    changes_reset(&g_dashboard.pending);
+    LeaveCriticalSection(&g_dashboard.lock);
+    pending = changes->ai != -1 || changes->promo != -1 ||
+              changes->reports != -1;
+    return pending;
+}

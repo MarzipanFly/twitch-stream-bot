@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>ApelsinBot — панель управления</title>
+<style>
+:root{--bg:#101014;--panel:#1c1c22;--panel2:#24242c;--edge:#383840;--muted:#a1a1b0;--text:#f5f5f7;--orange:#ff9a33;--deep:#ef751e;--green:#54dda6;--red:#ff7c84}*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse 70% 40% at 55% -10%,#492d20 0,transparent 73%),var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:inherit} .shell{width:min(1200px,calc(100% - 40px));margin:0 auto;padding:31px 0 60px}
+.header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:0 0 30px}.brand{display:flex;align-items:center;gap:14px}.symbol{width:53px;height:53px;border-radius:17px;display:grid;place-items:center;background:linear-gradient(145deg,#ffb958,#f47b25);box-shadow:0 7px 24px #dd6a1d25;color:#271508;font-size:28px}
+h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:13px;color:var(--muted);margin-top:1px}.header-right{display:flex;align-items:center;gap:11px}.tag{padding:7px 11px;border:1px solid var(--edge);border-radius:100px;background:#ffffff07;color:var(--muted);font-size:12px;font-weight:700}.tag.connected{color:var(--green);border-color:#54dda64b}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;margin-right:6px}.divider{height:1px;background:var(--edge);margin:20px 0}
+.gridstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:0 0 22px}.card,.panel{background:linear-gradient(180deg,#222229ee,#1a1a21ee);border:1px solid #38383f;border-radius:18px;box-shadow:0 9px 24px #0000001e}.card{padding:21px 22px;min-height:137px}.eyebrow{color:var(--muted);font-size:13px}.metric{font-size:37px;letter-spacing:-1.5px;font-weight:800;line-height:1.2;margin:10px 0 2px;font-variant-numeric:tabular-nums}.metric span{color:var(--orange)}.hint{font-size:12px;color:var(--muted)}.columns{display:grid;grid-template-columns:1.24fr 1fr;gap:17px}.panel{padding:24px;margin-bottom:17px}.section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:21px}.section-head h2{font-size:17px;letter-spacing:-.2px;margin:0}.section-head .minor{font-size:12px;color:var(--muted)}.banner{padding:17px 19px;border-radius:14px;background:linear-gradient(100deg,#3b281b,#252026);border:1px solid #6c4b31;margin-bottom:19px}.banner strong{display:block;font-size:16px;margin-bottom:4px;white-space:normal;overflow-wrap:anywhere}.banner p{margin:0;color:#dfc6b2;font-size:13px}.info{display:grid;grid-template-columns:1fr 1fr;gap:16px}.kv .k{color:var(--muted);font-size:12px}.kv .v{font-weight:600;white-space:normal;overflow-wrap:anywhere}.track{padding:17px;border:1px solid #3c3837;border-radius:12px;background:#ffffff07;margin-top:18px}.track .v{margin-top:7px;color:#f7e2d3;overflow-wrap:anywhere}.feature{display:flex;align-items:center;gap:13px;padding:16px 0;border-top:1px solid var(--edge)}.feature:first-of-type{border-top:0;padding-top:0}.feature-info{flex:1;min-width:0}.feature strong{font-size:14px}.feature p{color:var(--muted);font-size:12px;margin:3px 0 0}.toggle{width:48px;height:27px;flex-shrink:0;border:1px solid #777782;border-radius:20px;background:#4b4b55;cursor:pointer;position:relative;transition:.15s}.toggle:before{content:"";height:19px;width:19px;position:absolute;top:3px;left:3px;border-radius:50%;background:#e9e9ee;transition:.15s}.toggle[aria-checked=true]{background:var(--orange);border-color:var(--orange)}.toggle[aria-checked=true]:before{transform:translateX(21px);background:#1d130d}.toggle:disabled{opacity:.4;cursor:wait}
+.note{font-size:12px;color:var(--muted);margin:17px 0 0;line-height:1.65}.orange{color:var(--orange)}.top-viewers{white-space:pre-wrap;color:#e0dfec;font:13px/1.8 "Cascadia Code",Consolas,monospace;overflow-wrap:anywhere;margin:0}.no-data{color:var(--muted);font-size:13px}.foot{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;border-top:1px solid #38383f;padding-top:22px;color:var(--muted);font-size:12px;margin-top:8px}.foot a{color:var(--orange);text-decoration:none}.status-message{position:fixed;bottom:24px;right:24px;background:#28242a;border:1px solid #7d5337;border-radius:13px;padding:12px 18px;box-shadow:0 10px 35px #0006;font-size:13px;max-width:min(380px,calc(100vw - 30px));display:none}.status-message.show{display:block}
+@media(max-width:900px){.gridstats{grid-template-columns:repeat(2,1fr)}.columns{grid-template-columns:1fr}}
+@media(max-width:520px){.shell{width:calc(100% - 24px);padding-top:18px}.header{align-items:flex-start}.brand{gap:9px}.symbol{width:43px;height:43px;font-size:23px}.header-right{display:block;text-align:right}.header-right .tag{display:block;margin-bottom:6px}.gridstats{gap:9px}.card{padding:17px;min-height:117px}.metric{font-size:30px}.panel{padding:18px}.info{grid-template-columns:1fr}}
+</style>
+<script defer src="/app.js"></script>
+</head>
+<body>
+<main class="shell">
+<header class="header">
+  <div class="brand"><div class="symbol" aria-hidden="true">🍊</div><div><h1>ApelsinBot</h1><div class="sub">Центр управления трансляцией</div></div></div>
+  <div class="header-right"><span id="service" class="tag connected"><i class="dot"></i> Локально</span><span id="liveTag" class="tag">OFFLINE</span></div>
+</header>
+<section class="gridstats" aria-label="Статистика бота">
+  <div class="card"><div class="eyebrow">Зрителей сейчас</div><div class="metric" id="viewers">—</div><div class="hint">По данным Twitch Helix</div></div>
+  <div class="card"><div class="eyebrow">Пик за сеанс</div><div class="metric" id="peak">—</div><div class="hint">Замеры текущего запуска</div></div>
+  <div class="card"><div class="eyebrow">Профилей зрителей</div><div class="metric" id="profiles">—</div><div class="hint">В локальной экономике 🍊</div></div>
+  <div class="card"><div class="eyebrow">Треков в очереди</div><div class="metric" id="queue">—</div><div class="hint">Не включая текущий трек</div></div>
+</section>
+<section class="columns">
+ <div>
+  <article class="panel">
+   <div class="section-head"><h2>Текущая трансляция</h2><span class="minor" id="updated">Обновляем данные…</span></div>
+   <div class="banner"><strong id="streamTitle">Проверяем Twitch…</strong><p id="streamSubtitle">—</p></div>
+   <div class="info">
+    <div class="kv"><div class="k">Канал</div><div class="v" id="channel">—</div></div>
+    <div class="kv"><div class="k">Категория / игра</div><div class="v" id="game">—</div></div>
+    <div class="kv"><div class="k">Подключение к чату</div><div class="v" id="chat">—</div></div>
+    <div class="kv"><div class="k">Бот работает</div><div class="v" id="uptime">—</div></div>
+   </div>
+   <div class="track"><div class="eyebrow">♫ Сейчас играет</div><div class="v" id="track">Нет активного трека</div></div>
+  </article>
+  <article class="panel">
+   <div class="section-head"><h2>Рейтинг апельсинов</h2><span class="minor">Топ по балансу</span></div>
+   <pre class="top-viewers" id="top">Загружаем…</pre>
+  </article>
+ </div>
+ <div>
+  <article class="panel">
+   <div class="section-head"><h2>Управление функциями</h2><span class="minor">Изменения без перезапуска</span></div>
+   <div class="feature">
+    <div class="feature-info"><strong>ИИ-помощник</strong><p>Ollama / !бот. При включении модель загрузится в память.</p></div>
+    <button class="toggle" id="toggle-ai" role="switch" aria-label="Включить ИИ" aria-checked="false"></button>
+   </div>
+   <div class="feature">
+    <div class="feature-info"><strong>Telegram и Discord</strong><p>Автоматические приглашения в чат во время эфира.</p></div>
+    <button class="toggle" id="toggle-promo" role="switch" aria-label="Включить объявления" aria-checked="false"></button>
+   </div>
+   <div class="feature">
+    <div class="feature-info"><strong>Отчёты о стримах</strong><p>Статистика эфиров в data/stream_reports.</p></div>
+    <button class="toggle" id="toggle-reports" role="switch" aria-label="Включить отчёты" aria-checked="false"></button>
+   </div>
+   <div class="divider"></div>
+   <div class="info">
+    <div class="kv"><div class="k">OBS</div><div class="v" id="obs">—</div></div>
+    <div class="kv"><div class="k">Интервал объявлений</div><div class="v" id="promoPeriod">—</div></div>
+   </div>
+   <p class="note">Переключатели сохраняются локально в <span class="orange">data/dashboard_controls.ini</span>. Они не затрагивают токены, балансы и настройки OBS.</p>
+  </article>
+  <article class="panel">
+   <div class="section-head"><h2>Быстрый доступ</h2><span class="minor">Данные на компьютере</span></div>
+   <p class="no-data">Отчёты трансляций: <code>data/stream_reports/</code></p>
+   <p class="no-data">Логи бота: <code>logs/bot.log</code></p>
+   <p class="no-data">Музыкальная очередь: команды <code>!трек</code> и <code>!очередь</code></p>
+   <p class="note">Для безопасности панель не показывает OAuth-токены, ID чатов и пароли, не отправляет файлы браузеру и доступна только через 127.0.0.1.</p>
+  </article>
+ </div>
+</section>
+<footer class="foot"><span>ApelsinBot • Локальная панель • Обновление каждые 5 секунд</span><span>Программа должна быть запущена · <a href="https://github.com/MarzipanFly/twitch-stream-bot" rel="noopener noreferrer" target="_blank">Исходный код</a></span></footer>
+</main>
+<div id="toast" class="status-message" role="status" aria-live="polite"></div>
+</body>
+</html>
