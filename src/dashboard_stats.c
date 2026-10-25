@@ -51,7 +51,6 @@ int dashboard_mark_moment(const TwitchStream *stream,const char *note,
                           time_t now,char *message,size_t size)
 {
     char path[400],title[420],*p; FILE *f;
-    time_t started=0;
     int y=0,month=0,day=0,hour=0,minute=0,second=0;
     int seconds=-1,ok;
     long long started=0;
