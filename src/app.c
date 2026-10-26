@@ -3830,9 +3830,6 @@ static BotResult run_bot_loop(
         return BOT_ERR_CONFIG;
     }
 
-    /* Uses a separate broadcaster token; the chat bot's OAuth session is untouched. */
-    (void)category_sync_start(config, &category_sync);
-
     /*
      * Получаем базовое состояние стрима.
      * Если бот запущен во время уже идущего стрима,
@@ -3847,6 +3844,9 @@ static BotResult run_bot_loop(
     {
         return result;
     }
+
+    /* Uses a separate broadcaster token; the chat bot's OAuth session is untouched. */
+    (void)category_sync_start(config, &category_sync);
 
     previous_live_state =
         initial_stream.is_live;
