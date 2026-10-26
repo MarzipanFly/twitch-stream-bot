@@ -457,7 +457,9 @@ static BotResult category_sync_read_game_query(
         return BOT_ERR_TWITCH;
     }
 
+    log_debug("Category sync OBS game window setting: '%s'", window->valuestring);
     extract_game_query(window->valuestring, query, query_size);
+    log_debug("Category sync extracted game query: '%s'", query);
     cJSON_Delete(root);
     return query[0] ? BOT_OK : BOT_ERR_TWITCH;
 }
