@@ -92,8 +92,22 @@ static int is_process_running(const char *wanted_process)
     HANDLE snapshot;
     PROCESSENTRY32 entry;
     int found = -1;
+#ifdef UNICODE
+    WCHAR wanted_wide[MAX_PATH];
+#endif
 
     if (!wanted_process || !wanted_process[0]) return -1;
+#ifdef UNICODE
+    /*
+     * PROCESSENTRY32 and Process32First/Next follow the project's UNICODE
+     * setting. Convert the ASCII executable name before comparing it with
+     * szExeFile; passing WCHAR data to _stricmp can never match reliably.
+     */
+    if (MultiByteToWideChar(CP_ACP, 0, wanted_process, -1,
+                            wanted_wide, MAX_PATH) == 0)
+        return -1;
+#endif
+
     snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot == INVALID_HANDLE_VALUE) return -1;
 
@@ -104,7 +118,11 @@ static int is_process_running(const char *wanted_process)
         found = 0;
         do
         {
+#ifdef UNICODE
+            if (lstrcmpiW(entry.szExeFile, wanted_wide) == 0)
+#else
             if (_stricmp(entry.szExeFile, wanted_process) == 0)
+#endif
             {
                 found = 1;
                 break;
