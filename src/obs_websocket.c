@@ -369,6 +369,7 @@ BotResult obs_websocket_request(ObsWebSocket *client, const char *request_type,
     BotResult result = BOT_ERR_JSON;
     size_t used = 0;
     int written;
+    unsigned int attempt;
 
     if (!client || !client->authenticated || !client->websocket ||
         !request_type || !response || response_size == 0)
@@ -383,40 +384,71 @@ BotResult obs_websocket_request(ObsWebSocket *client, const char *request_type,
         request_data = cJSON_Parse(request_data_json);
         if (!cJSON_IsObject(request_data)) goto cleanup;
         written = snprintf(packet, sizeof(packet),
-            "{\"op\":6,\"d\":{\"requestType\":%s,\"requestId\":%s,\"requestData\":%s}}",
+            "{\\"op\\":6,\\"d\\":{\\"requestType\\":%s,\\"requestId\\":%s,\\"requestData\\":%s}}",
             quoted_type, quoted_id, request_data_json);
     }
     else
     {
         written = snprintf(packet, sizeof(packet),
-            "{\"op\":6,\"d\":{\"requestType\":%s,\"requestId\":%s}}",
+            "{\\"op\\":6,\\"d\\":{\\"requestType\\":%s,\\"requestId\\":%s}}",
             quoted_type, quoted_id);
     }
     if (written < 0 || (size_t)written >= sizeof(packet)) goto cleanup;
     result = send_json(client, packet);
     if (result != BOT_OK) goto cleanup;
-    result = receive_json(client, &reply);
-    if (result != BOT_OK) goto cleanup;
-    op = cJSON_GetObjectItemCaseSensitive(reply, "op");
-    d = cJSON_GetObjectItemCaseSensitive(reply, "d");
-    returned_id = cJSON_GetObjectItemCaseSensitive(d, "requestId");
-    status = cJSON_GetObjectItemCaseSensitive(d, "requestStatus");
-    success = cJSON_GetObjectItemCaseSensitive(status, "result");
-    if (!cJSON_IsNumber(op) || op->valueint != 7 ||
-        !cJSON_IsString(returned_id) || strcmp(returned_id->valuestring, id) ||
-        !success || !(success->type & cJSON_True))
+
+    /*
+     * OBS WebSocket v5 can deliver events (op 5) on the same connection
+     * between our request and its reply. Do not mistake an event or a
+     * response for a different request for this request's result.
+     */
+    for (attempt = 0; attempt < 64; ++attempt)
     {
-        log_warning("OBS request failed: %s", request_type);
-        result = BOT_ERR_NETWORK;
-        goto cleanup;
+        result = receive_json(client, &reply);
+        if (result != BOT_OK) goto cleanup;
+
+        op = cJSON_GetObjectItemCaseSensitive(reply, "op");
+        d = cJSON_GetObjectItemCaseSensitive(reply, "d");
+        returned_id = cJSON_GetObjectItemCaseSensitive(d, "requestId");
+
+        if (cJSON_IsNumber(op) && op->valueint == 7 &&
+            cJSON_IsString(returned_id) && returned_id->valuestring &&
+            strcmp(returned_id->valuestring, id) == 0)
+        {
+            status = cJSON_GetObjectItemCaseSensitive(d, "requestStatus");
+            success = cJSON_GetObjectItemCaseSensitive(status, "result");
+            if (!cJSON_IsTrue(success))
+            {
+                const cJSON *code = cJSON_GetObjectItemCaseSensitive(status, "code");
+                const cJSON *comment = cJSON_GetObjectItemCaseSensitive(status, "comment");
+                log_warning("OBS request failed: %s (code=%d, comment=%s)",
+                            request_type,
+                            cJSON_IsNumber(code) ? code->valueint : 0,
+                            cJSON_IsString(comment) && comment->valuestring ?
+                                comment->valuestring : "no details");
+                result = BOT_ERR_NETWORK;
+                goto cleanup;
+            }
+
+            response_data = cJSON_GetObjectItemCaseSensitive(d, "responseData");
+            if (response_data &&
+                !append_json(response, response_size, &used, response_data))
+            {
+                result = BOT_ERR_JSON;
+                goto cleanup;
+            }
+            result = BOT_OK;
+            goto cleanup;
+        }
+
+        /* Discard unrelated OBS events and replies, then await our request ID. */
+        cJSON_Delete(reply);
+        reply = NULL;
     }
-    response_data = cJSON_GetObjectItemCaseSensitive(d, "responseData");
-    if (response_data && !append_json(response, response_size, &used, response_data))
-    {
-        result = BOT_ERR_JSON;
-        goto cleanup;
-    }
-    result = BOT_OK;
+
+    log_warning("OBS request timed out waiting for matching response: %s", request_type);
+    result = BOT_ERR_NETWORK;
+
 cleanup:
     cJSON_Delete(request_data);
     cJSON_Delete(reply);
