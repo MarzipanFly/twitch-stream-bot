@@ -28,6 +28,7 @@ BotResult obs_websocket_request(ObsWebSocket *client, const char *request_type,
                                 char *response, size_t response_size);
 BotResult obs_websocket_get_version(ObsWebSocket *client, char *response, size_t size);
 BotResult obs_websocket_get_scene(ObsWebSocket *client, char *response, size_t size);
+BotResult obs_websocket_get_input_settings(ObsWebSocket *client, const char *input_name, char *response, size_t size);
 BotResult obs_websocket_set_scene(ObsWebSocket *client, const char *scene_name);
 BotResult obs_websocket_restart_media(ObsWebSocket *client, const char *input_name);
 BotResult obs_websocket_stop_media(ObsWebSocket *client, const char *input_name);
