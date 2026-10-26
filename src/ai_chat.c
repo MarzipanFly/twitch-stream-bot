@@ -39,6 +39,7 @@ typedef struct
     char login[TWITCH_EVENTSUB_LOGIN_SIZE];
     char question[AI_QUESTION_BYTES + 1];
     TwitchConfig twitch; /* Snapshot avoids racing token refresh in the main loop. */
+    int is_suggestion; /* Private streamer prompt; never delivered to Twitch. */
 } AiJob;
 
 typedef struct
@@ -83,6 +84,9 @@ typedef struct
     char current_track[256];
     char obs_scene[CONFIG_STRING_SIZE];
     char obs_process[CONFIG_STRING_SIZE];
+    char cohost_suggestion[AI_RESPONSE_BYTES + 1];
+    unsigned int cohost_sequence;
+    int cohost_pending;
 } AiState;
 
 static AiState g_ai;
@@ -421,6 +425,11 @@ static int ollama_generate(const char *model, const AiJob *job,
     if (!append_chat_message(payload, AI_PAYLOAD_CAPACITY, &used,
                              &message_count, "system", system_prompt))
         goto cleanup;
+    if (job->is_suggestion &&
+        !append_chat_message(payload, AI_PAYLOAD_CAPACITY, &used,
+                             &message_count, "system",
+                             "Ты приватный ИИ-суфлёр стримера. Предложи ОДНУ естественную тему или конкретную фразу, с которой стример может начать разговор вслух. Используй только предоставленный контекст трансляции, игры и OBS; если конкретная игра неизвестна, не угадывай. Не обращайся к зрителям напрямую и не пиши сообщение от имени бота. Ответ по-русски, максимум 2 коротких предложения, без списка и вступления. Это подсказка только стримеру, не сообщение для Twitch."))
+        goto cleanup;
     /* Curated offline facts take precedence over the model's past mistakes. */
     {
         int create_topic = ai_knowledge_is_create_topic(job->question);
@@ -607,14 +616,19 @@ static DWORD WINAPI ai_worker_thread(LPVOID unused)
                 memmove(&g_ai.jobs[0], &g_ai.jobs[1],
                         g_ai.count * sizeof(g_ai.jobs[0]));
             {
-                AiMemory *memory = memory_reserve_locked(
-                    job.user_id, GetTickCount());
-                history = *memory;
+                AiMemory *memory = NULL;
+                if (job.is_suggestion)
+                    memset(&history, 0, sizeof(history));
+                else
+                {
+                    memory = memory_reserve_locked(job.user_id, GetTickCount());
+                    history = *memory;
+                }
                 stream = g_ai.stream;
                 memcpy(track, g_ai.current_track, sizeof(track));
                 memcpy(obs_scene, g_ai.obs_scene, sizeof(obs_scene));
                 memcpy(obs_process, g_ai.obs_process, sizeof(obs_process));
-                revision = memory->revision;
+                revision = memory ? memory->revision : 0;
             }
             LeaveCriticalSection(&g_ai.lock);
             log_debug("AI context: viewer=%s, previous exchanges=%u",
@@ -644,10 +658,36 @@ static DWORD WINAPI ai_worker_thread(LPVOID unused)
                                             obs_process, answer, sizeof(answer));
             EnterCriticalSection(&g_ai.lock);
             stopping = g_ai.stopping;
-            still_current = memory_revision_valid_locked(job.user_id, revision);
+            still_current = job.is_suggestion ? 1 :
+                            memory_revision_valid_locked(job.user_id, revision);
             LeaveCriticalSection(&g_ai.lock);
             if (stopping) return 0;
             if (!still_current) continue; /* Cleared while generating. */
+
+            if (job.is_suggestion)
+            {
+                EnterCriticalSection(&g_ai.lock);
+                g_ai.cohost_pending = 0;
+                if (generated)
+                {
+                    snprintf(g_ai.cohost_suggestion,
+                             sizeof(g_ai.cohost_suggestion), "%s", answer);
+                    ++g_ai.cohost_sequence;
+                }
+                else
+                {
+                    snprintf(g_ai.cohost_suggestion,
+                             sizeof(g_ai.cohost_suggestion),
+                             "Не удалось получить подсказку. Проверь, что Ollama запущена.");
+                    ++g_ai.cohost_sequence;
+                }
+                LeaveCriticalSection(&g_ai.lock);
+                if (generated)
+                    log_info("Private AI cohost suggestion generated");
+                else
+                    log_warning("Private AI cohost suggestion generation failed");
+                continue;
+            }
 
             if (!generated)
             {
@@ -742,6 +782,47 @@ int ai_chat_start(const AiConfig *config)
     log_info("Local AI enabled: model=%s, cooldown=%u s",
              g_ai.model, config->cooldown_seconds);
     return 1;
+}
+
+int ai_chat_request_cohost_suggestion(void)
+{
+    AiJob *job;
+    if (!g_ai.started) return 0;
+    EnterCriticalSection(&g_ai.lock);
+    if (g_ai.stopping || g_ai.cohost_pending ||
+        g_ai.count >= AI_QUEUE_CAPACITY)
+    {
+        LeaveCriticalSection(&g_ai.lock);
+        return 0;
+    }
+    job = &g_ai.jobs[g_ai.count++];
+    memset(job, 0, sizeof(*job));
+    snprintf(job->user_id, sizeof(job->user_id), "__cohost_suggestion__");
+    snprintf(job->login, sizeof(job->login), "стример");
+    snprintf(job->question, sizeof(job->question),
+             "Предложи тему для разговора на основе текущей трансляции. "
+             "Не выдумывай события и неизвестные детали игры.");
+    job->is_suggestion = 1;
+    g_ai.cohost_pending = 1;
+    SetEvent(g_ai.wake);
+    LeaveCriticalSection(&g_ai.lock);
+    log_info("Private AI cohost suggestion queued");
+    return 1;
+}
+
+void ai_chat_get_cohost_suggestion(char *text, size_t capacity,
+                                   unsigned int *sequence, int *pending)
+{
+    if (text && capacity) text[0] = '\0';
+    if (!g_ai.started) return;
+    EnterCriticalSection(&g_ai.lock);
+    if (text && capacity)
+    {
+        snprintf(text, capacity, "%s", g_ai.cohost_suggestion);
+    }
+    if (sequence) *sequence = g_ai.cohost_sequence;
+    if (pending) *pending = g_ai.cohost_pending;
+    LeaveCriticalSection(&g_ai.lock);
 }
 
 void ai_chat_set_cooldown(unsigned int seconds)
