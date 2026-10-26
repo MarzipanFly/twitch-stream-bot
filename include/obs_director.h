@@ -12,7 +12,10 @@ typedef struct
     ObsWebSocket obs;
     DWORD last_poll_tick;
     DWORD last_connect_attempt_tick;
+    DWORD last_error_tick;
     DWORD manual_override_until_tick;
+    DWORD game_present_since_tick;
+    DWORD game_absent_since_tick;
     char last_seen_scene[CONFIG_STRING_SIZE];
     char last_director_scene[CONFIG_STRING_SIZE];
     char last_window_setting[CONFIG_STRING_SIZE];
