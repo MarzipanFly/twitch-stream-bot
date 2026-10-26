@@ -612,7 +612,8 @@ void category_sync_tick(const AppConfig *config, CategorySync *sync)
     char category_name[CONFIG_STRING_SIZE];
     BotResult result;
 
-    if (!config || !sync || !sync->active) return;
+    if (!config || !sync || !sync->active ||
+        !config->category_sync.enabled || !config->obs.enabled) return;
 
     now = GetTickCount();
 
