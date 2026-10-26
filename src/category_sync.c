@@ -668,7 +668,7 @@ void category_sync_tick(const AppConfig *config, CategorySync *sync)
     if (strcmp(scene, config->category_sync.game_scene) != 0)
         return;
 
-    result = category_sync_read_active_game(
+    result = category_sync_read_fullscreen_game(
         query, sizeof(query), process_query, sizeof(process_query),
         process_name, sizeof(process_name));
     if (result != BOT_OK)
