@@ -6,7 +6,7 @@ main{max-width:1050px;margin:auto;padding:32px 22px 80px}.top{display:flex;gap:2
 h1{margin:0;font-size:27px}h2{font-size:18px;margin:0 0 15px}a{color:var(--orange)}.muted{color:var(--muted);font-size:13px}
 .panel{border:1px solid var(--edge);border-radius:16px;background:linear-gradient(#24242b,#1a1a22);padding:24px;margin-bottom:18px}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}label{display:block;font-size:13px;color:#ccc;margin-bottom:5px}
-input{width:100%;padding:11px 12px;border:1px solid var(--edge);border-radius:10px;background:#15151a;color:#fff;font:inherit}input:focus{outline:2px solid #9a5d2a}
+input,select{width:100%;padding:11px 12px;border:1px solid var(--edge);border-radius:10px;background:#15151a;color:#fff;font:inherit}input:focus,select:focus{outline:2px solid #9a5d2a}
 .field{display:flex;align-items:end;gap:8px}.field>div{flex:1;min-width:0}button{background:var(--orange);border:0;border-radius:10px;padding:12px 14px;color:#201408;font-weight:750;cursor:pointer}button:disabled{opacity:.45;cursor:wait}
 .rows{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:10px;align-items:end}.sound{border-top:1px solid var(--edge);padding-top:13px;margin-top:13px}.sound strong{font-size:14px;overflow-wrap:anywhere}
 .tag{border:1px solid var(--edge);padding:8px 12px;border-radius:100px}.message{position:fixed;bottom:20px;right:20px;border-radius:10px;border:1px solid #99612d;background:#30241d;padding:12px 18px;display:none}.message.show{display:block}
@@ -20,6 +20,15 @@ input{width:100%;padding:11px 12px;border:1px solid var(--edge);border-radius:10
 </div></section>
 <section class="panel"><h2>Реклама и кулдауны</h2><div class="grid" id="numericFields"></div><p class="muted">Интервал рекламы: минимум не больше максимума. Секунды кулдаунов применяются к следующим командам.</p></section>
 <section class="panel"><h2>Звуковые эффекты 🍊</h2><p class="muted">Изменяются цены и кулдауны уже настроенных звуков. Новые звуковые команды пока добавляются через config.ini.</p><div id="soundFields"></div></section>
+<section class="panel"><h2>Интеграции и автоматизация</h2>
+<p class="muted">Настройки сохраняются локально. После изменения переключателей OBS, синхронизации категории или режиссёра перезапусти ApelsinBot, чтобы модули корректно запустились или остановились. Изменение сцен и таймингов применяется к работающим модулям.</p>
+<div class="grid" id="automationFields"></div></section>
+<section class="panel"><h2>Сцены и категория Twitch</h2>
+<p class="muted">Названия сцен должны точно совпадать с OBS. Категория общения обычно — Just Chatting. Сцены режиссёра и синхронизации категории настраиваются отдельно.</p>
+<div class="grid" id="sceneFields"></div></section>
+<section class="panel"><h2>Тайминги умного режиссёра</h2>
+<p class="muted">Задержки защищают от случайных переключений при загрузке игры, сворачивании и переходе между окнами.</p>
+<div class="grid" id="timingFields"></div></section>
 <section class="panel"><h2>Защищённые доступы</h2><p class="muted">Пароли и токены сохраняются Windows DPAPI и никогда не показываются браузеру повторно. Оставь поле пустым, чтобы не изменять действующий доступ.</p>
 <div class="grid">
 <div class="field"><div><label for="obs_password">Пароль OBS WebSocket</label><input id="obs_password" type="password" autocomplete="new-password" placeholder="Новый пароль" maxlength="255"></div><button data-key="obs_password">Обновить</button></div>
