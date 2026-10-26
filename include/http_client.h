@@ -30,6 +30,14 @@ BotResult http_post(
     HttpResponse *response
 );
 
+BotResult http_patch(
+    const wchar_t *host,
+    const wchar_t *path,
+    const wchar_t *additional_headers,
+    const char *body,
+    HttpResponse *response
+);
+
 void http_response_free(
     HttpResponse *response
 );
