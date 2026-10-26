@@ -90,7 +90,7 @@ static int extract_process_name(const char *window, char *process, size_t size)
 static int is_process_running(const char *wanted_process)
 {
     HANDLE snapshot;
-    PROCESSENTRY32A entry;
+    PROCESSENTRY32 entry;
     int found = -1;
 
     if (!wanted_process || !wanted_process[0]) return -1;
@@ -99,7 +99,7 @@ static int is_process_running(const char *wanted_process)
 
     memset(&entry, 0, sizeof(entry));
     entry.dwSize = sizeof(entry);
-    if (Process32FirstA(snapshot, &entry))
+    if (Process32First(snapshot, &entry))
     {
         found = 0;
         do
@@ -109,7 +109,7 @@ static int is_process_running(const char *wanted_process)
                 found = 1;
                 break;
             }
-        } while (Process32NextA(snapshot, &entry));
+        } while (Process32Next(snapshot, &entry));
     }
     CloseHandle(snapshot);
     return found;
