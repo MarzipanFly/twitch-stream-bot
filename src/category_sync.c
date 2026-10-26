@@ -8,6 +8,7 @@
 #include "cJSON.h"
 
 #include <windows.h>
+#include <tlhelp32.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
@@ -470,9 +471,6 @@ static BotResult category_sync_read_active_game(
     HWND window;
     DWORD process_id = 0;
     WCHAR title_wide[512] = L"";
-    WCHAR path_wide[MAX_PATH] = L"";
-    DWORD path_length = MAX_PATH;
-    HANDLE process_handle = NULL;
     char title[CONFIG_STRING_SIZE] = "";
     char path_utf8[CONFIG_STRING_SIZE] = "";
     char *basename;
@@ -496,14 +494,28 @@ static BotResult category_sync_read_active_game(
     if (process_id != 0)
         process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
 
-    if (process_handle)
+    if (process_id != 0)
     {
-        if (QueryFullProcessImageNameW(process_handle, 0, path_wide, &path_length))
+        HANDLE process_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (process_snapshot != INVALID_HANDLE_VALUE)
         {
-            if (!wide_to_utf8(path_wide, path_utf8, sizeof(path_utf8)))
-                path_utf8[0] = '\0';
+            PROCESSENTRY32W process_entry;
+            memset(&process_entry, 0, sizeof(process_entry));
+            process_entry.dwSize = sizeof(process_entry);
+            if (Process32FirstW(process_snapshot, &process_entry))
+            {
+                do
+                {
+                    if (process_entry.th32ProcessID == process_id)
+                    {
+                        (void)wide_to_utf8(process_entry.szExeFile,
+                                           path_utf8, sizeof(path_utf8));
+                        break;
+                    }
+                } while (Process32NextW(process_snapshot, &process_entry));
+            }
+            CloseHandle(process_snapshot);
         }
-        CloseHandle(process_handle);
     }
 
     if (!path_utf8[0])
