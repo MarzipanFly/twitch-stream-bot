@@ -223,7 +223,11 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
 
     if (director->manual_override_until_tick != 0 &&
         (LONG)(now - director->manual_override_until_tick) < 0)
+    {
+        director->game_present_since_tick = 0;
+        director->game_absent_since_tick = 0;
         return;
+    }
 
     /* Only act from the two managed scenes; never take over break/custom scenes. */
     if (strcmp(scene, config->obs_director.game_scene) != 0 &&
