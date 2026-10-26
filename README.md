@@ -271,6 +271,7 @@ password=ВАШ_ЛОКАЛЬНЫЙ_ПАРОЛЬ
 enabled=true
 chat_scene=Общение
 game_scene=Игры
+# Legacy compatibility option; category detection now uses the active Windows window.
 game_input=Захват игры
 chat_category=Just Chatting
 poll_seconds=5
