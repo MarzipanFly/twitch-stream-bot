@@ -133,7 +133,7 @@ static int status_json(char *json, size_t capacity)
         "\"queue\":%u,\"profiles\":%u,\"peak\":%d,\"uptime\":%lu,"
         "\"promo_min\":%u,\"promo_max\":%u,\"obs_connected\":%s,"
         "\"obs_recording\":%d,\"obs_streaming\":%d,"
-        "\"obs_result_seq\":%u,\"broadcaster\":",
+        "\"obs_result_seq\":%u,\"ai_suggestion_seq\":%u,\"chat_idle_seconds\":%u,\"ai_suggestion_pending\":%s,\"broadcaster\":",
         s.live ? "true" : "false", s.viewers, s.chat_connected ? "true" : "false",
         s.ai_enabled ? "true" : "false", s.promo_enabled ? "true" : "false",
         s.reports_enabled ? "true" : "false", s.obs_enabled ? "true" : "false",
