@@ -257,6 +257,12 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
     }
 
     game_running = is_process_running(process);
+    if (game_running < 0)
+    {
+        log_director_error(director, now, "could not enumerate Windows processes; no scene change made");
+        return;
+    }
+
     /*
      * Delays and state confirmation are tracked separately from scene changes.
      * A process must remain in the same state for the configured duration
