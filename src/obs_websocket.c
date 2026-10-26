@@ -421,11 +421,20 @@ BotResult obs_websocket_request(ObsWebSocket *client, const char *request_type,
             {
                 const cJSON *code = cJSON_GetObjectItemCaseSensitive(status, "code");
                 const cJSON *comment = cJSON_GetObjectItemCaseSensitive(status, "comment");
-                log_warning("OBS request failed: %s (code=%d, comment=%s)",
-                            request_type,
-                            cJSON_IsNumber(code) ? code->valueint : 0,
-                            cJSON_IsString(comment) && comment->valuestring ?
-                                comment->valuestring : "no details");
+                /*
+                 * Dashboard audio discovery probes all OBS inputs. OBS error
+                 * 604 is expected for video-only/non-audio inputs, so avoid
+                 * flooding the main log while keeping all other failures visible.
+                 */
+                if (!(request_type && strcmp(request_type, "GetInputVolume") == 0 &&
+                      cJSON_IsNumber(code) && code->valueint == 604))
+                {
+                    log_warning("OBS request failed: %s (code=%d, comment=%s)",
+                                request_type,
+                                cJSON_IsNumber(code) ? code->valueint : 0,
+                                cJSON_IsString(comment) && comment->valuestring ?
+                                    comment->valuestring : "no details");
+                }
                 result = BOT_ERR_NETWORK;
                 goto cleanup;
             }
