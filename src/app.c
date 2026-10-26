@@ -3822,9 +3822,6 @@ static BotResult run_bot_loop(
     int dashboard_running = 0;
     LONG cohost_seen_chat_sequence = 0;
     int cohost_suggested_this_idle = 0;
-    char cohost_suggestion[512] = "";
-    unsigned int cohost_suggestion_sequence = 0;
-    int cohost_suggestion_pending = 0;
 
     BotResult result;
     BotResult chat_result;
