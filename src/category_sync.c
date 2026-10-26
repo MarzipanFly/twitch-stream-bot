@@ -476,7 +476,7 @@ static BotResult category_sync_read_scene(CategorySync *sync, char *scene, size_
  * Use the shared fullscreen-window detector so category sync and scene
  * switching agree on which application is currently being played.
  */
-static BotResult category_sync_read_active_game(
+static BotResult category_sync_read_fullscreen_game(
     char *query, size_t query_size,
     char *process_query, size_t process_query_size,
     char *process_name, size_t process_name_size)
@@ -676,7 +676,7 @@ void category_sync_tick(const AppConfig *config, CategorySync *sync)
         if (sync->last_source_error_tick == 0 ||
             (DWORD)(now - sync->last_source_error_tick) >= 30000UL)
         {
-            log_warning("Category sync could not identify a foreground game window; keeping the current Twitch category");
+            log_warning("Category sync could not identify a fullscreen game window; keeping the current Twitch category");
             sync->last_source_error_tick = now;
         }
         return;
@@ -705,7 +705,7 @@ void category_sync_tick(const AppConfig *config, CategorySync *sync)
     sync->last_game_category_name[0] = '\0';
     sync->last_game_lookup_tick = now;
 
-    log_info("Category sync foreground app: title='%s', process='%s'",
+    log_info("Category sync fullscreen app: title='%s', process='%s'",
              query, process_name[0] ? process_name : "unknown");
     result = category_sync_search(
         sync, config, query, category_id, sizeof(category_id),
