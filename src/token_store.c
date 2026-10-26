@@ -438,7 +438,7 @@ static BotResult token_store_delete_from(const char *filename)
 
     attributes =
         GetFileAttributesA(
-            TOKEN_STORE_FILE
+            filename
         );
 
     if (attributes ==
