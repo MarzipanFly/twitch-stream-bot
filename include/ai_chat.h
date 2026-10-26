@@ -32,5 +32,9 @@ void ai_chat_set_obs_context(const char *scene, const char *process_name);
 void ai_chat_stop(void);
 int ai_chat_running(void);
 void ai_chat_set_cooldown(unsigned int seconds);
+/* Queue one private streamer prompt; it is never sent to Twitch chat. */
+int ai_chat_request_cohost_suggestion(void);
+void ai_chat_get_cohost_suggestion(char *text, size_t capacity,
+                                   unsigned int *sequence, int *pending);
 
 #endif
