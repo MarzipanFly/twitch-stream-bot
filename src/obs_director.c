@@ -1,4 +1,5 @@
 #include "obs_director.h"
+#include "game_detector.h"
 
 #include "logger.h"
 #include "cJSON.h"
@@ -33,106 +34,6 @@ static int read_current_scene(ObsDirector *director, char *scene, size_t size)
     return ok;
 }
 
-static int read_game_window(ObsDirector *director, const AppConfig *config,
-                            char *window, size_t window_size)
-{
-    char response[8192];
-    cJSON *root;
-    const cJSON *settings, *value;
-    int ok = 0;
-
-    if (obs_websocket_get_input_settings(&director->obs,
-            config->obs_director.game_input, response, sizeof(response)) != BOT_OK)
-        return 0;
-    root = cJSON_Parse(response);
-    if (!root) return 0;
-    settings = cJSON_GetObjectItemCaseSensitive(root, "inputSettings");
-    value = cJSON_GetObjectItemCaseSensitive(settings, "window");
-    if (cJSON_IsString(value) && value->valuestring &&
-        strlen(value->valuestring) < window_size)
-    {
-        snprintf(window, window_size, "%s", value->valuestring);
-        ok = 1;
-    }
-    cJSON_Delete(root);
-    return ok;
-}
-
-/*
- * OBS Game Capture usually stores a target as title:window-class:process.exe.
- * Use the final component as the process name. Generic capture targets that
- * don't identify one executable are intentionally treated as unknown.
- */
-static int extract_process_name(const char *window, char *process, size_t size)
-{
-    const char *name, *colon, *dot;
-    size_t length;
-
-    if (!window || !window[0] || !process || size == 0) return 0;
-    colon = strrchr(window, ':');
-    name = colon ? colon + 1 : window;
-    while (*name == ' ' || *name == '\t') ++name;
-    length = strlen(name);
-    while (length > 0 && (name[length - 1] == ' ' || name[length - 1] == '\t'))
-        --length;
-    if (length < 5 || length >= size) return 0;
-    dot = name + length - 4;
-    if (dot <= name || tolower((unsigned char)dot[0]) != '.' ||
-        tolower((unsigned char)dot[1]) != 'e' ||
-        tolower((unsigned char)dot[2]) != 'x' ||
-        tolower((unsigned char)dot[3]) != 'e')
-        return 0;
-    memcpy(process, name, length);
-    process[length] = '\0';
-    return 1;
-}
-
-static int is_process_running(const char *wanted_process)
-{
-    HANDLE snapshot;
-    PROCESSENTRY32 entry;
-    int found = -1;
-#ifdef UNICODE
-    WCHAR wanted_wide[MAX_PATH];
-#endif
-
-    if (!wanted_process || !wanted_process[0]) return -1;
-#ifdef UNICODE
-    /*
-     * PROCESSENTRY32 and Process32First/Next follow the project's UNICODE
-     * setting. Convert the ASCII executable name before comparing it with
-     * szExeFile; passing WCHAR data to _stricmp can never match reliably.
-     */
-    if (MultiByteToWideChar(CP_ACP, 0, wanted_process, -1,
-                            wanted_wide, MAX_PATH) == 0)
-        return -1;
-#endif
-
-    snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) return -1;
-
-    memset(&entry, 0, sizeof(entry));
-    entry.dwSize = sizeof(entry);
-    if (Process32First(snapshot, &entry))
-    {
-        found = 0;
-        do
-        {
-#ifdef UNICODE
-            if (lstrcmpiW(entry.szExeFile, wanted_wide) == 0)
-#else
-            if (_stricmp(entry.szExeFile, wanted_process) == 0)
-#endif
-            {
-                found = 1;
-                break;
-            }
-        } while (Process32Next(snapshot, &entry));
-    }
-    CloseHandle(snapshot);
-    return found;
-}
-
 static void log_director_error(ObsDirector *director, DWORD now,
                                const char *message)
 {
@@ -160,18 +61,16 @@ BotResult obs_director_start(const AppConfig *config, ObsDirector *director)
         return BOT_OK;
     }
     if (!config->obs_director.game_scene[0] ||
-        !config->obs_director.chat_scene[0] ||
-        !config->obs_director.game_input[0])
+        !config->obs_director.chat_scene[0])
     {
-        log_warning("OBS director requires game_scene, chat_scene and game_input");
+        log_warning("OBS director requires game_scene and chat_scene");
         return BOT_OK;
     }
 
     director->last_game_running = -1;
     director->active = 1;
-    log_info("OBS director enabled: game scene '%s', chat scene '%s', Game Capture input '%s'",
-             config->obs_director.game_scene, config->obs_director.chat_scene,
-             config->obs_director.game_input);
+    log_info("OBS director enabled: game scene '%s', chat scene '%s', detecting fullscreen Windows applications",
+             config->obs_director.game_scene, config->obs_director.chat_scene);
     return BOT_OK;
 }
 
@@ -180,10 +79,10 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
     DWORD now;
     unsigned int poll_seconds;
     char scene[CONFIG_STRING_SIZE] = "";
-    char window[CONFIG_STRING_SIZE] = "";
     char process[CONFIG_STRING_SIZE] = "";
+    GameDetectorWindow candidate;
+    int detection_result;
     int game_running;
-    int window_changed;
 
     if (!config || !director || !director->active) return;
     now = GetTickCount();
@@ -246,42 +145,31 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
         strcmp(scene, config->obs_director.chat_scene) != 0)
         return;
 
-    if (!read_game_window(director, config, window, sizeof(window)))
-    {
-        log_director_error(director, now, "could not read the configured Game Capture window; no scene change made");
-        return;
-    }
-
-    window_changed = !director->window_setting_known ||
-                     strcmp(window, director->last_window_setting) != 0;
-    if (window_changed)
-    {
-        snprintf(director->last_window_setting, sizeof(director->last_window_setting),
-                 "%s", window);
-        director->window_setting_known = 1;
-        log_info("OBS director Game Capture window setting: '%s'",
-                 window[0] ? window : "<empty>");
-    }
-
-    if (!extract_process_name(window, process, sizeof(process)))
+    detection_result = game_detector_find_fullscreen(&candidate);
+    if (detection_result < 0)
     {
         log_director_error(director, now,
-            window[0]
-                ? "Game Capture window setting does not end with a specific .exe process; automatic switching skipped"
-                : "Game Capture window setting is empty; select a specific game window in OBS source properties");
+            "could not enumerate fullscreen Windows applications; no scene change made");
         return;
     }
 
-    game_running = is_process_running(process);
-    if (game_running < 0)
+    game_running = detection_result == 1;
+    if (game_running)
     {
-        log_director_error(director, now, "could not enumerate Windows processes; no scene change made");
-        return;
+        snprintf(process, sizeof(process), "%s", candidate.process_name);
+        snprintf(director->last_detected_process,
+                 sizeof(director->last_detected_process), "%s", process);
     }
+    else if (director->last_detected_process[0])
+    {
+        snprintf(process, sizeof(process), "%s", director->last_detected_process);
+    }
+
     if (director->last_game_running != game_running)
     {
-        log_info("OBS director game process '%s': %s",
-                 process, game_running ? "RUNNING" : "not running");
+        log_info("OBS director fullscreen application: %s (%s)",
+                 process[0] ? process : "none",
+                 game_running ? "detected" : "not detected");
         director->last_game_running = game_running;
     }
 
