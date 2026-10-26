@@ -1,6 +1,8 @@
 #ifndef CATEGORY_SYNC_H
 #define CATEGORY_SYNC_H
 
+#include <windows.h>
+
 #include "config.h"
 #include "obs_websocket.h"
 
