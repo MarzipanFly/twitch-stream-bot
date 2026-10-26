@@ -220,7 +220,8 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
     snprintf(director->last_seen_scene, sizeof(director->last_seen_scene), "%s", scene);
     director->state_known = 1;
 
-    if ((LONG)(now - director->manual_override_until_tick) < 0)
+    if (director->manual_override_until_tick != 0 &&
+        (LONG)(now - director->manual_override_until_tick) < 0)
         return;
 
     /* Only act from the two managed scenes; never take over break/custom scenes. */
@@ -250,16 +251,6 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
     }
 
     game_running = is_process_running(process);
-    if (game_running && config->obs_director.auto_game_scene &&
-        strcmp(scene, config->obs_director.chat_scene) == 0)
-    {
-        if (config->obs_director.game_start_delay_seconds > 0)
-        {
-            /* The start delay is implemented by requiring the same state to
-             * persist across polling ticks; see candidate state below. */
-        }
-    }
-
     /*
      * Delays and state confirmation are tracked separately from scene changes.
      * A process must remain in the same state for the configured duration
@@ -267,7 +258,6 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
      */
     if (game_running)
     {
-        director->game_seen_tick = now;
         if (director->game_absent_since_tick != 0)
             director->game_absent_since_tick = 0;
         if (strcmp(scene, config->obs_director.chat_scene) == 0 &&
