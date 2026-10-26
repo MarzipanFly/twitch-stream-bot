@@ -175,8 +175,8 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
 
     /*
      * Delays and state confirmation are tracked separately from scene changes.
-     * A process must remain in the same state for the configured duration
-     * before the director changes scenes.
+     * A fullscreen application must remain present/absent for the configured
+     * duration before the director changes scenes.
      */
     if (game_running)
     {
@@ -201,7 +201,7 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
                              config->obs_director.game_scene);
                     director->manual_override_until_tick = 0;
                     director->game_present_since_tick = 0;
-                    log_info("OBS director switched scene to '%s' (process %s detected)",
+                    log_info("OBS director switched scene to '%s' (fullscreen application %s detected)",
                              config->obs_director.game_scene, process);
                 }
                 else
@@ -231,7 +231,7 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
                          sizeof(director->last_seen_scene), "%s",
                          config->obs_director.chat_scene);
                 director->game_absent_since_tick = 0;
-                log_info("OBS director switched scene to '%s' (process %s is no longer running)",
+                log_info("OBS director switched scene to '%s' (no fullscreen application detected; last was %s)",
                          config->obs_director.chat_scene, process);
             }
             else
