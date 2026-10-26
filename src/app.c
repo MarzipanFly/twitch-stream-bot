@@ -4389,6 +4389,10 @@ static BotResult run_bot_loop(
         now = GetTickCount();
         category_sync_tick(config, &category_sync);
         obs_director_tick(config, &obs_director);
+        ai_chat_set_obs_context(
+            obs_director.state_known ? obs_director.last_seen_scene : NULL,
+            obs_director.last_detected_process[0] ?
+                obs_director.last_detected_process : NULL);
 
         /*
          * ----------------------------------------------------
