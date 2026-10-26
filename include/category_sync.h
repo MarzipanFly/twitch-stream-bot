@@ -26,6 +26,7 @@ typedef struct
     char last_category_id[64];
     char chat_category_id[64];
     char last_game_query[CONFIG_STRING_SIZE];
+    char last_game_process[CONFIG_STRING_SIZE];
     char last_game_category_id[64];
     char last_game_category_name[CONFIG_STRING_SIZE];
 } CategorySync;
