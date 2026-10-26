@@ -11,6 +11,7 @@
 #include "command_cooldown.h"
 #include "obs_websocket.h"
 #include "category_sync.h"
+#include "obs_director.h"
 #include "platform.h"
 #include "telegram_api.h"
 #include "http_client.h"
@@ -3799,6 +3800,7 @@ static BotResult run_bot_loop(
     DashboardChanges dash_changes;
     DashboardObs obs_state = {0};
     CategorySync category_sync = {0};
+    ObsDirector obs_director = {0};
     DWORD last_obs_poll = 0;
     unsigned int obs_result_sequence = 0;
     char obs_result[160] = "";
@@ -3832,6 +3834,7 @@ static BotResult run_bot_loop(
 
     /* Uses a separate broadcaster token; the chat bot's OAuth session is untouched. */
     (void)category_sync_start(config, &category_sync);
+    (void)obs_director_start(config, &obs_director);
 
     /*
      * Получаем базовое состояние стрима.
@@ -3845,6 +3848,7 @@ static BotResult run_bot_loop(
 
     if (result != BOT_OK)
     {
+        obs_director_stop(&obs_director);
         category_sync_stop(&category_sync);
         return result;
     }
@@ -4384,6 +4388,7 @@ static BotResult run_bot_loop(
             g_music_current_valid ? g_music_current.title : NULL);
         now = GetTickCount();
         category_sync_tick(config, &category_sync);
+        obs_director_tick(config, &obs_director);
 
         /*
          * ----------------------------------------------------
@@ -4636,6 +4641,7 @@ static BotResult run_bot_loop(
 		}
     }
 
+    obs_director_stop(&obs_director);
     category_sync_stop(&category_sync);
     dashboard_stop();
     ai_chat_stop();
