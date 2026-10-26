@@ -214,7 +214,19 @@ static int status_json(char *json, size_t capacity)
        !json_append(json,capacity,&n,",\"discord_url\":") ||
        !json_quote(json,capacity,&n,s.discord_url) ||
        !json_append(json,capacity,&n,",\"telegram_chat_id\":") ||
-       !json_quote(json,capacity,&n,s.telegram_chat_id))
+       !json_quote(json,capacity,&n,s.telegram_chat_id) ||
+       !json_append(json,capacity,&n,",\"category_chat_scene\":") ||
+       !json_quote(json,capacity,&n,s.category_chat_scene) ||
+       !json_append(json,capacity,&n,",\"category_game_scene\":") ||
+       !json_quote(json,capacity,&n,s.category_game_scene) ||
+       !json_append(json,capacity,&n,",\"category_chat_category\":") ||
+       !json_quote(json,capacity,&n,s.category_chat_category) ||
+       !json_append(json,capacity,&n,",\"director_game_scene\":") ||
+       !json_quote(json,capacity,&n,s.director_game_scene) ||
+       !json_append(json,capacity,&n,",\"director_chat_scene\":") ||
+       !json_quote(json,capacity,&n,s.director_chat_scene) ||
+       !json_append(json,capacity,&n,",\"director_break_scene\":") ||
+       !json_quote(json,capacity,&n,s.director_break_scene))
        return 0;
     {
         char value[250];
@@ -224,6 +236,24 @@ static int status_json(char *json, size_t capacity)
                  "\"command_seq\":%u,",
                  s.ai_cooldown,s.cooldown_normal,s.cooldown_game,
                  s.cooldown_bruh,s.command_seq);
+        if(!json_append(json,capacity,&n,value))return 0;
+    }
+    {
+        char value[600];
+        snprintf(value,sizeof(value),
+                 "\"obs_config_enabled\":%s,\"category_sync_enabled\":%s,"
+                 "\"director_enabled\":%s,\"director_auto_game\":%s,"
+                 "\"director_auto_chat\":%s,\"category_poll_seconds\":%u,"
+                 "\"director_start_delay\":%u,\"director_stop_delay\":%u,"
+                 "\"director_manual_override\":%u,\"director_poll_seconds\":%u,",
+                 s.obs_config_enabled?"true":"false",
+                 s.category_sync_enabled?"true":"false",
+                 s.obs_director_enabled?"true":"false",
+                 s.director_auto_game?"true":"false",
+                 s.director_auto_chat?"true":"false",
+                 s.category_poll_seconds,s.director_start_delay,
+                 s.director_stop_delay,s.director_manual_override,
+                 s.director_poll_seconds);
         if(!json_append(json,capacity,&n,value))return 0;
     }
     if(!json_append(json,capacity,&n,"\"command_result\":") ||
