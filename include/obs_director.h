@@ -10,6 +10,7 @@ typedef struct
     int active;
     int state_known;
     int window_setting_known;
+    int last_game_running; /* -1 unknown, 0 absent, 1 running */
     ObsWebSocket obs;
     DWORD last_poll_tick;
     DWORD last_connect_attempt_tick;
