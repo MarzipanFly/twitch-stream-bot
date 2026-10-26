@@ -1,4 +1,5 @@
 #include "category_sync.h"
+#include "game_detector.h"
 
 #include "logger.h"
 #include "twitch_api.h"
@@ -425,56 +426,19 @@ static BotResult category_sync_read_scene(CategorySync *sync, char *scene, size_
     return BOT_OK;
 }
 
-static int wide_to_utf8(const WCHAR *input, char *output, size_t output_size)
-{
-    int required;
-    if (!input || !output || output_size == 0) return 0;
-    output[0] = '\0';
-    required = WideCharToMultiByte(CP_UTF8, 0, input, -1, NULL, 0, NULL, NULL);
-    if (required <= 0 || (size_t)required > output_size) return 0;
-    return WideCharToMultiByte(CP_UTF8, 0, input, -1, output,
-                               (int)output_size, NULL, NULL) > 0;
-}
-
-static int ignored_foreground_process(const char *process_name)
-{
-    static const char *ignored[] = {
-        "obs64.exe", "obs32.exe", "twitchbot.exe", "explorer.exe",
-        "chrome.exe", "msedge.exe", "firefox.exe", "opera.exe",
-        "brave.exe", "browser.exe", "yandex.exe", "discord.exe",
-        "steam.exe", "steamwebhelper.exe", "epicgameslauncher.exe",
-        "battle.net.exe", "upc.exe", "ubisoftconnect.exe",
-        "eadesktop.exe", "ealauncher.exe", "riotclientservices.exe",
-        "applicationframehost.exe", "searchhost.exe",
-        "startmenuexperiencehost.exe", "shellexperiencehost.exe",
-        "textinputhost.exe", "taskmgr.exe", "cmd.exe", "powershell.exe",
-        "windowsterminal.exe", "qtcreator.exe", "devenv.exe", "code.exe",
-        NULL
-    };
-    size_t i;
-    for (i = 0; ignored[i]; ++i)
-        if (text_case_equal(process_name, ignored[i])) return 1;
-    return 0;
-}
-
 /*
- * Identify the foreground application without tying detection to one OBS
- * Game Capture source. The window title is the primary category query; the
- * executable basename is retained as a fallback for titles that Twitch
- * does not recognize.
+ * Use the shared fullscreen-window detector so category sync and scene
+ * switching agree on which application is currently being played.
  */
 static BotResult category_sync_read_active_game(
     char *query, size_t query_size,
     char *process_query, size_t process_query_size,
     char *process_name, size_t process_name_size)
 {
-    HWND window;
-    DWORD process_id = 0;
-    WCHAR title_wide[512] = L"";
-    char title[CONFIG_STRING_SIZE] = "";
-    char path_utf8[CONFIG_STRING_SIZE] = "";
-    char *basename;
+    GameDetectorWindow candidate;
+    char executable_query[CONFIG_STRING_SIZE];
     size_t length;
+    int detected;
 
     if (!query || query_size == 0 || !process_query || process_query_size == 0 ||
         !process_name || process_name_size == 0)
@@ -483,68 +447,20 @@ static BotResult category_sync_read_active_game(
     query[0] = '\0';
     process_query[0] = '\0';
     process_name[0] = '\0';
+    executable_query[0] = '\0';
 
-    window = GetForegroundWindow();
-    if (!window) return BOT_ERR_TWITCH;
-
-    (void)GetWindowTextW(window, title_wide,
-                         (int)(sizeof(title_wide) / sizeof(title_wide[0])));
-    (void)GetWindowThreadProcessId(window, &process_id);
-
-    if (process_id != 0)
-    {
-        HANDLE process_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (process_snapshot != INVALID_HANDLE_VALUE)
-        {
-            PROCESSENTRY32W process_entry;
-            memset(&process_entry, 0, sizeof(process_entry));
-            process_entry.dwSize = sizeof(process_entry);
-            if (Process32FirstW(process_snapshot, &process_entry))
-            {
-                do
-                {
-                    if (process_entry.th32ProcessID == process_id)
-                    {
-                        (void)wide_to_utf8(process_entry.szExeFile,
-                                           path_utf8, sizeof(path_utf8));
-                        break;
-                    }
-                } while (Process32NextW(process_snapshot, &process_entry));
-            }
-            CloseHandle(process_snapshot);
-        }
-    }
-
-    if (!path_utf8[0])
-    {
-        /* Without the executable name we cannot safely distinguish a game
-         * from a browser or another foreground application. */
+    detected = game_detector_find_fullscreen(&candidate);
+    if (detected <= 0)
         return BOT_ERR_TWITCH;
-    }
 
-    if (path_utf8[0])
-    {
-        basename = strrchr(path_utf8, '\\');
-        basename = basename ? basename + 1 : path_utf8;
-        snprintf(process_name, process_name_size, "%s", basename);
-        if (ignored_foreground_process(process_name))
-            return BOT_ERR_TWITCH;
+    snprintf(query, query_size, "%s", candidate.title);
+    snprintf(process_name, process_name_size, "%s", candidate.process_name);
+    snprintf(executable_query, sizeof(executable_query), "%s", candidate.process_name);
 
-        snprintf(path_utf8, sizeof(path_utf8), "%s", process_name);
-        length = strlen(path_utf8);
-        if (length > 4 && text_case_equal(path_utf8 + length - 4, ".exe"))
-            path_utf8[length - 4] = '\0';
-        extract_game_query(path_utf8, process_query, process_query_size);
-    }
-
-    if (title_wide[0] && !wide_to_utf8(title_wide, title, sizeof(title)))
-        title[0] = '\0';
-    trim_whitespace(title);
-
-    if (title[0])
-        snprintf(query, query_size, "%s", title);
-    else if (process_query[0])
-        snprintf(query, query_size, "%s", process_query);
+    length = strlen(executable_query);
+    if (length > 4 && text_case_equal(executable_query + length - 4, ".exe"))
+        executable_query[length - 4] = '\0';
+    extract_game_query(executable_query, process_query, process_query_size);
 
     return query[0] ? BOT_OK : BOT_ERR_TWITCH;
 }
