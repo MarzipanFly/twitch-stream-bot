@@ -27,6 +27,8 @@ int ai_chat_forget(const char *user_id);
 int ai_chat_persistent_set(const char *user_id, int enable);
 void ai_chat_set_stream_context(const TwitchStream *stream);
 void ai_chat_set_current_track(const char *title);
+/* Latest OBS scene and fullscreen process detected by the OBS director. */
+void ai_chat_set_obs_context(const char *scene, const char *process_name);
 void ai_chat_stop(void);
 int ai_chat_running(void);
 void ai_chat_set_cooldown(unsigned int seconds);
