@@ -21,6 +21,7 @@ typedef struct
     char last_seen_scene[CONFIG_STRING_SIZE];
     char last_director_scene[CONFIG_STRING_SIZE];
     char last_window_setting[CONFIG_STRING_SIZE];
+    char last_detected_process[CONFIG_STRING_SIZE];
 } ObsDirector;
 
 /* Starts the director only when [obs_director] is explicitly enabled. */
