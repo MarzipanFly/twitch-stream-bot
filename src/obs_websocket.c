@@ -452,6 +452,25 @@ BotResult obs_websocket_set_scene(ObsWebSocket *client, const char *scene_name)
                               "sceneName", scene_name, NULL);
 }
 
+BotResult obs_websocket_get_input_settings(ObsWebSocket *client, const char *input_name,
+                                           char *response, size_t size)
+{
+    char request_data[8192];
+    char quoted_name[4096];
+    int written;
+
+    if (!client || !input_name || !response || size == 0)
+        return BOT_ERR_CONFIG;
+    if (!json_quote(input_name, quoted_name, sizeof(quoted_name)))
+        return BOT_ERR_JSON;
+    written = snprintf(request_data, sizeof(request_data),
+                       "{\"inputName\":%s}", quoted_name);
+    if (written < 0 || (size_t)written >= sizeof(request_data))
+        return BOT_ERR_JSON;
+    return obs_websocket_request(client, "GetInputSettings", request_data,
+                                 response, size);
+}
+
 BotResult obs_websocket_restart_media(ObsWebSocket *client, const char *input_name)
 {
     return obs_request_string(client, "TriggerMediaInputAction", "inputName",
