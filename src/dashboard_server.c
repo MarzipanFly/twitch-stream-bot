@@ -140,7 +140,9 @@ static int status_json(char *json, size_t capacity)
         (unsigned int)s.queue_count, (unsigned int)s.profile_count,
         s.peak_observed, s.uptime_seconds, s.promo_min, s.promo_max,
         s.obs_state.connected ? "true" : "false",
-        s.obs_state.recording, s.obs_state.streaming, s.obs_result_sequence);
+        s.obs_state.recording, s.obs_state.streaming, s.obs_result_sequence,
+         s.ai_suggestion_sequence, s.chat_idle_seconds,
+         s.ai_suggestion_pending ? "true" : "false");
     if (len < 0 || (size_t)len >= capacity) return 0;
     n = (size_t)len;
     if (!json_quote(json,capacity,&n,s.broadcaster) ||
@@ -150,6 +152,8 @@ static int status_json(char *json, size_t capacity)
         !json_quote(json,capacity,&n,s.title) ||
         !json_append(json,capacity,&n,",\"track\":") ||
         !json_quote(json,capacity,&n,s.track) ||
+         !json_append(json,capacity,&n,",\"ai_suggestion\":") ||
+         !json_quote(json,capacity,&n,s.ai_suggestion) ||
         !json_append(json,capacity,&n,",\"obs_scene\":") ||
         !json_quote(json,capacity,&n,s.obs_state.scene) ||
         !json_append(json,capacity,&n,",\"obs_result\":") ||
