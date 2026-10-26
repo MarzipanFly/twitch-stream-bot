@@ -19,7 +19,8 @@ typedef enum
     SECTION_STREAM_REPORT,
     SECTION_DASHBOARD,
     SECTION_COOLDOWNS,
-    SECTION_SOUNDS
+    SECTION_SOUNDS,
+    SECTION_CATEGORY_SYNC
 
 } ConfigSection;
 
@@ -100,6 +101,7 @@ static ConfigSection parse_section(
     if (strcmp(line, "[dashboard]") == 0) return SECTION_DASHBOARD;
     if (strcmp(line, "[cooldowns]") == 0) return SECTION_COOLDOWNS;
     if (strcmp(line, "[sounds]") == 0) return SECTION_SOUNDS;
+    if (strcmp(line, "[category_sync]") == 0) return SECTION_CATEGORY_SYNC;
 
     if (strcmp(line, "[bot]") == 0)
     {
@@ -408,6 +410,32 @@ static void parse_key_value(
             break;
         }
 
+        case SECTION_CATEGORY_SYNC:
+            if (strcmp(key, "enabled") == 0)
+                config->category_sync.enabled =
+                    strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
+            else if (strcmp(key, "chat_scene") == 0)
+                copy_string(config->category_sync.chat_scene,
+                            sizeof(config->category_sync.chat_scene), value);
+            else if (strcmp(key, "game_scene") == 0)
+                copy_string(config->category_sync.game_scene,
+                            sizeof(config->category_sync.game_scene), value);
+            else if (strcmp(key, "game_input") == 0)
+                copy_string(config->category_sync.game_input,
+                            sizeof(config->category_sync.game_input), value);
+            else if (strcmp(key, "chat_category") == 0)
+                copy_string(config->category_sync.chat_category,
+                            sizeof(config->category_sync.chat_category), value);
+            else if (strcmp(key, "poll_seconds") == 0)
+            {
+                unsigned int seconds = 0;
+                char extra;
+                if (sscanf(value, "%u %c", &seconds, &extra) == 1 &&
+                    seconds >= 2 && seconds <= 60)
+                    config->category_sync.poll_seconds = seconds;
+            }
+            break;
+
         case SECTION_BOT:
 
             if (strcmp(key, "command_prefix") == 0)
@@ -465,6 +493,12 @@ BotResult config_load(
     config->cooldowns.normal_seconds = 10;
     config->cooldowns.game_seconds = 5;
     config->cooldowns.bruh_seconds = 15;
+    config->category_sync.enabled = 0;
+    snprintf(config->category_sync.chat_scene, sizeof(config->category_sync.chat_scene), "%s", "Общение");
+    snprintf(config->category_sync.game_scene, sizeof(config->category_sync.game_scene), "%s", "Игры");
+    snprintf(config->category_sync.game_input, sizeof(config->category_sync.game_input), "%s", "Захват игры");
+    snprintf(config->category_sync.chat_category, sizeof(config->category_sync.chat_category), "%s", "Just Chatting");
+    config->category_sync.poll_seconds = 5;
 
     file = fopen(filename, "r");
 
