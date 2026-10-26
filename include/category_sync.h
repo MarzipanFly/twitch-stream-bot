@@ -4,11 +4,17 @@
 #include <windows.h>
 
 #include "config.h"
+#include "twitch_auth.h"
 #include "obs_websocket.h"
 
 typedef struct
 {
     int active;
+    int auth_pending;
+    int auth_poll_interval_seconds;
+    DWORD auth_started_tick;
+    DWORD auth_next_poll_tick;
+    TwitchDeviceCode pending_device;
     ObsWebSocket obs;
     TwitchConfig broadcaster_twitch;
     DWORD last_poll_tick;
