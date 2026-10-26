@@ -100,10 +100,7 @@ static BotResult category_sync_authorize(
 )
 {
     TwitchDeviceCode device = {0};
-    TwitchAuthToken token = {0};
     BotResult result;
-    int elapsed = 0;
-    int interval;
 
     log_info("Category sync needs a separate authorization for channel:manage:broadcast");
     log_info("Authorize the Twitch channel owner account: %s", config->twitch.broadcaster_login);
@@ -116,36 +113,75 @@ static BotResult category_sync_authorize(
     log_info("Category-sync authorization code: %s", device.user_code);
     log_info("Approve this code using the Twitch account configured as broadcaster_login.");
 
-    interval = device.interval > 0 ? device.interval : 5;
-    result = BOT_AUTH_PENDING;
+    sync->pending_device = device;
+    sync->auth_pending = 1;
+    sync->auth_poll_interval_seconds = device.interval > 0 ? device.interval : 5;
+    sync->auth_started_tick = GetTickCount();
+    sync->auth_next_poll_tick = sync->auth_started_tick +
+        (DWORD)sync->auth_poll_interval_seconds * 1000UL;
+    return BOT_AUTH_PENDING;
+}
 
-    while (elapsed < device.expires_in)
+static BotResult category_sync_poll_authorization(
+    CategorySync *sync,
+    const AppConfig *config,
+    DWORD now
+)
+{
+    TwitchAuthToken token = {0};
+    BotResult result;
+    DWORD elapsed_ms;
+
+    if (!sync || !config || !sync->auth_pending)
+        return BOT_ERR_CONFIG;
+
+    elapsed_ms = (DWORD)(now - sync->auth_started_tick);
+    if (sync->pending_device.expires_in <= 0 ||
+        elapsed_ms >= (DWORD)sync->pending_device.expires_in * 1000UL)
     {
-        Sleep((DWORD)interval * 1000UL);
-        elapsed += interval;
-
-        result = twitch_auth_poll_token_with_scopes(
-            &config->twitch, &device, CATEGORY_SYNC_SCOPE, &token);
-
-        if (result == BOT_OK)
-        {
-            result = category_sync_apply_token(sync, config, &token, 1);
-            SecureZeroMemory(&token, sizeof(token));
-            if (result == BOT_OK)
-                log_info("Category-sync broadcaster authorization saved securely");
-            return result;
-        }
-
-        if (result == BOT_AUTH_PENDING)
-            continue;
-
-        SecureZeroMemory(&token, sizeof(token));
-        return result;
+        log_warning("Category-sync authorization code expired; restart the bot to request a new code");
+        SecureZeroMemory(&sync->pending_device, sizeof(sync->pending_device));
+        sync->auth_pending = 0;
+        sync->active = 0;
+        return BOT_ERR_AUTH;
     }
 
-    log_warning("Category-sync authorization code expired; category switching is disabled until restart");
+    if ((LONG)(now - sync->auth_next_poll_tick) < 0)
+        return BOT_AUTH_PENDING;
+
+    sync->auth_next_poll_tick = now +
+        (DWORD)sync->auth_poll_interval_seconds * 1000UL;
+    result = twitch_auth_poll_token_with_scopes(
+        &config->twitch, &sync->pending_device,
+        CATEGORY_SYNC_SCOPE, &token);
+
+    if (result == BOT_AUTH_PENDING)
+    {
+        SecureZeroMemory(&token, sizeof(token));
+        return BOT_AUTH_PENDING;
+    }
+
+    if (result == BOT_OK)
+        result = category_sync_apply_token(sync, config, &token, 1);
+
     SecureZeroMemory(&token, sizeof(token));
-    return BOT_ERR_AUTH;
+    SecureZeroMemory(&sync->pending_device, sizeof(sync->pending_device));
+    sync->auth_pending = 0;
+
+    if (result == BOT_OK)
+    {
+        sync->active = 1;
+        sync->last_poll_tick = now -
+            (DWORD)(config->category_sync.poll_seconds ?
+                    config->category_sync.poll_seconds : 5) * 1000UL;
+        log_info("Category-sync broadcaster authorization saved securely");
+        return BOT_OK;
+    }
+
+    sync->active = 0;
+    log_warning("Category-sync authorization failed: %s",
+                bot_result_to_string(result));
+    return result;
 }
 
 static BotResult category_sync_refresh_token(
@@ -266,6 +302,12 @@ BotResult category_sync_start(const AppConfig *config, CategorySync *sync)
     sync->broadcaster_twitch.refresh_token[0] = '\0';
 
     result = category_sync_prepare_auth(sync, config);
+    if (result == BOT_AUTH_PENDING && sync->auth_pending)
+    {
+        sync->active = 1;
+        log_info("Category sync is waiting for broadcaster OAuth approval; other bot features will continue running");
+        return BOT_OK;
+    }
     if (result != BOT_OK)
     {
         log_warning("Automatic category sync could not authorize and will remain disabled: %s",
@@ -521,6 +563,14 @@ void category_sync_tick(const AppConfig *config, CategorySync *sync)
     if (!config || !sync || !sync->active) return;
 
     now = GetTickCount();
+
+    /* Poll OAuth incrementally so the main bot loop never waits for approval. */
+    if (sync->auth_pending)
+    {
+        (void)category_sync_poll_authorization(sync, config, now);
+        if (!sync->active || sync->auth_pending) return;
+    }
+
     poll_seconds = config->category_sync.poll_seconds ? config->category_sync.poll_seconds : 5;
     if ((DWORD)(now - sync->last_poll_tick) < (DWORD)poll_seconds * 1000UL) return;
     sync->last_poll_tick = now;
@@ -614,5 +664,7 @@ void category_sync_stop(CategorySync *sync)
     if (!sync) return;
     obs_websocket_close(&sync->obs);
     SecureZeroMemory(&sync->broadcaster_twitch, sizeof(sync->broadcaster_twitch));
+    SecureZeroMemory(&sync->pending_device, sizeof(sync->pending_device));
+    sync->auth_pending = 0;
     sync->active = 0;
 }
