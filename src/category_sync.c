@@ -319,9 +319,9 @@ BotResult category_sync_start(const AppConfig *config, CategorySync *sync)
     sync->last_poll_tick = (DWORD)(GetTickCount() -
         (config->category_sync.poll_seconds ? config->category_sync.poll_seconds : 5) * 1000UL);
 
-    log_info("Automatic Twitch category sync enabled: scene '%s' -> '%s', scene '%s' -> game from OBS input '%s'",
+    log_info("Automatic Twitch category sync enabled: scene '%s' -> '%s', scene '%s' -> foreground game category",
              config->category_sync.chat_scene, config->category_sync.chat_category,
-             config->category_sync.game_scene, config->category_sync.game_input);
+             config->category_sync.game_scene);
     return BOT_OK;
 }
 
@@ -424,43 +424,112 @@ static BotResult category_sync_read_scene(CategorySync *sync, char *scene, size_
     return BOT_OK;
 }
 
-static BotResult category_sync_read_game_query(
-    CategorySync *sync,
-    const AppConfig *config,
-    char *query,
-    size_t query_size
-)
+static int wide_to_utf8(const WCHAR *input, char *output, size_t output_size)
 {
-    char response[8192];
-    cJSON *root;
-    cJSON *settings;
-    cJSON *window;
-    BotResult result;
+    int required;
+    if (!input || !output || output_size == 0) return 0;
+    output[0] = '\0';
+    required = WideCharToMultiByte(CP_UTF8, 0, input, -1, NULL, 0, NULL, NULL);
+    if (required <= 0 || (size_t)required > output_size) return 0;
+    return WideCharToMultiByte(CP_UTF8, 0, input, -1, output,
+                               (int)output_size, NULL, NULL) > 0;
+}
+
+static int ignored_foreground_process(const char *process_name)
+{
+    static const char *ignored[] = {
+        "obs64.exe", "obs32.exe", "twitchbot.exe", "explorer.exe",
+        "chrome.exe", "msedge.exe", "firefox.exe", "opera.exe",
+        "brave.exe", "browser.exe", "yandex.exe", "discord.exe",
+        "steam.exe", "steamwebhelper.exe", "epicgameslauncher.exe",
+        "battle.net.exe", "upc.exe", "ubisoftconnect.exe",
+        "eadesktop.exe", "ealauncher.exe", "riotclientservices.exe",
+        "applicationframehost.exe", "searchhost.exe",
+        "startmenuexperiencehost.exe", "shellexperiencehost.exe",
+        "textinputhost.exe", "taskmgr.exe", "cmd.exe", "powershell.exe",
+        "windowsterminal.exe", "qtcreator.exe", "devenv.exe", "code.exe",
+        NULL
+    };
+    size_t i;
+    for (i = 0; ignored[i]; ++i)
+        if (text_case_equal(process_name, ignored[i])) return 1;
+    return 0;
+}
+
+/*
+ * Identify the foreground application without tying detection to one OBS
+ * Game Capture source. The window title is the primary category query; the
+ * executable basename is retained as a fallback for titles that Twitch
+ * does not recognize.
+ */
+static BotResult category_sync_read_active_game(
+    char *query, size_t query_size,
+    char *process_query, size_t process_query_size,
+    char *process_name, size_t process_name_size)
+{
+    HWND window;
+    DWORD process_id = 0;
+    WCHAR title_wide[512] = L"";
+    WCHAR path_wide[MAX_PATH] = L"";
+    DWORD path_length = MAX_PATH;
+    HANDLE process_handle = NULL;
+    char title[CONFIG_STRING_SIZE] = "";
+    char path_utf8[CONFIG_STRING_SIZE] = "";
+    char *basename;
+    size_t length;
+
+    if (!query || query_size == 0 || !process_query || process_query_size == 0 ||
+        !process_name || process_name_size == 0)
+        return BOT_ERR_CONFIG;
 
     query[0] = '\0';
-    result = obs_websocket_get_input_settings(
-        &sync->obs, config->category_sync.game_input, response, sizeof(response));
-    if (result != BOT_OK) return result;
+    process_query[0] = '\0';
+    process_name[0] = '\0';
 
-    root = cJSON_Parse(response);
-    if (!root) return BOT_ERR_JSON;
-    settings = cJSON_GetObjectItemCaseSensitive(root, "inputSettings");
-    if (!cJSON_IsObject(settings))
+    window = GetForegroundWindow();
+    if (!window) return BOT_ERR_TWITCH;
+
+    (void)GetWindowTextW(window, title_wide,
+                         (int)(sizeof(title_wide) / sizeof(title_wide[0])));
+    (void)GetWindowThreadProcessId(window, &process_id);
+
+    if (process_id != 0)
+        process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
+
+    if (process_handle)
     {
-        cJSON_Delete(root);
-        return BOT_ERR_JSON;
-    }
-    window = cJSON_GetObjectItemCaseSensitive(settings, "window");
-    if (!cJSON_IsString(window) || !window->valuestring || !window->valuestring[0])
-    {
-        cJSON_Delete(root);
-        return BOT_ERR_TWITCH;
+        if (QueryFullProcessImageNameW(process_handle, 0, path_wide, &path_length))
+        {
+            if (!wide_to_utf8(path_wide, path_utf8, sizeof(path_utf8)))
+                path_utf8[0] = '\0';
+        }
+        CloseHandle(process_handle);
     }
 
-    log_debug("Category sync OBS game window setting: '%s'", window->valuestring);
-    extract_game_query(window->valuestring, query, query_size);
-    log_debug("Category sync extracted game query: '%s'", query);
-    cJSON_Delete(root);
+    if (path_utf8[0])
+    {
+        basename = strrchr(path_utf8, '\\');
+        basename = basename ? basename + 1 : path_utf8;
+        snprintf(process_name, process_name_size, "%s", basename);
+        if (ignored_foreground_process(process_name))
+            return BOT_ERR_TWITCH;
+
+        snprintf(path_utf8, sizeof(path_utf8), "%s", process_name);
+        length = strlen(path_utf8);
+        if (length > 4 && text_case_equal(path_utf8 + length - 4, ".exe"))
+            path_utf8[length - 4] = '\0';
+        extract_game_query(path_utf8, process_query, process_query_size);
+    }
+
+    if (title_wide[0] && !wide_to_utf8(title_wide, title, sizeof(title)))
+        title[0] = '\0';
+    trim_whitespace(title);
+
+    if (title[0])
+        snprintf(query, query_size, "%s", title);
+    else if (process_query[0])
+        snprintf(query, query_size, "%s", process_query);
+
     return query[0] ? BOT_OK : BOT_ERR_TWITCH;
 }
 
@@ -558,6 +627,8 @@ void category_sync_tick(const AppConfig *config, CategorySync *sync)
     unsigned int poll_seconds;
     char scene[CONFIG_STRING_SIZE];
     char query[CONFIG_STRING_SIZE];
+    char process_query[CONFIG_STRING_SIZE];
+    char process_name[CONFIG_STRING_SIZE];
     char category_id[64];
     char category_name[CONFIG_STRING_SIZE];
     BotResult result;
@@ -618,20 +689,22 @@ void category_sync_tick(const AppConfig *config, CategorySync *sync)
     if (strcmp(scene, config->category_sync.game_scene) != 0)
         return;
 
-    result = category_sync_read_game_query(sync, config, query, sizeof(query));
+    result = category_sync_read_active_game(
+        query, sizeof(query), process_query, sizeof(process_query),
+        process_name, sizeof(process_name));
     if (result != BOT_OK)
     {
         if (sync->last_source_error_tick == 0 ||
             (DWORD)(now - sync->last_source_error_tick) >= 30000UL)
         {
-            log_warning("Category sync cannot read a game name from OBS input '%s'. Set that Game Capture source to a specific window; its selected window name is needed.",
-                        config->category_sync.game_input);
+            log_warning("Category sync could not identify a foreground game window; keeping the current Twitch category");
             sync->last_source_error_tick = now;
         }
         return;
     }
 
     if (strcmp(query, sync->last_game_query) == 0 &&
+        strcmp(process_query, sync->last_game_process) == 0 &&
         sync->last_game_category_id[0])
     {
         (void)category_sync_apply_category(
@@ -641,19 +714,33 @@ void category_sync_tick(const AppConfig *config, CategorySync *sync)
     }
 
     if (strcmp(query, sync->last_game_query) == 0 &&
+        strcmp(process_query, sync->last_game_process) == 0 &&
         !sync->last_game_category_id[0] &&
         sync->last_game_lookup_tick != 0 &&
         (DWORD)(now - sync->last_game_lookup_tick) < CATEGORY_SYNC_LOOKUP_RETRY_MS)
         return;
 
     snprintf(sync->last_game_query, sizeof(sync->last_game_query), "%s", query);
+    snprintf(sync->last_game_process, sizeof(sync->last_game_process), "%s", process_query);
     sync->last_game_category_id[0] = '\0';
     sync->last_game_category_name[0] = '\0';
     sync->last_game_lookup_tick = now;
 
+    log_info("Category sync foreground app: title='%s', process='%s'",
+             query, process_name[0] ? process_name : "unknown");
     result = category_sync_search(
         sync, config, query, category_id, sizeof(category_id),
         category_name, sizeof(category_name));
+
+    if (result == BOT_ERR_TWITCH && process_query[0] &&
+        !text_case_equal(process_query, query))
+    {
+        log_info("Category sync title did not match a Twitch category; retrying with process name '%s'",
+                 process_query);
+        result = category_sync_search(
+            sync, config, process_query, category_id, sizeof(category_id),
+            category_name, sizeof(category_name));
+    }
     if (result != BOT_OK) return;
 
     snprintf(sync->last_game_category_id, sizeof(sync->last_game_category_id), "%s", category_id);
