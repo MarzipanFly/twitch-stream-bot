@@ -106,6 +106,8 @@ typedef struct
     char model[128];
     unsigned int cooldown_seconds;
     int semantic_enabled; /* Optional Ollama embedding search. */
+    int live_chat_enabled; /* Opt-in replies to direct mentions in chat. */
+    unsigned int live_chat_cooldown_seconds;
     char semantic_model[128];
 } AiConfig;
 
