@@ -24,6 +24,12 @@ async function refresh() {
   text('channel',d.broadcaster);text('game',d.live?(d.game||'Не указана'):'Офлайн');
   text('chat',d.chat?'Подключён':'Не подключён');text('uptime',elapsed(d.uptime));
   text('track',d.track||'Нет активного трека');
+  const idleSeconds=Math.max(0,Number(d.chat_idle_seconds)||0);
+  if(d.ai_suggestion_pending) text('cohostIdle','ИИ готовит подсказку…');
+  else if(!d.live) text('cohostIdle','Ожидание начала трансляции');
+  else if(!d.chat) text('cohostIdle','Ожидание подключения к чату');
+  else text('cohostIdle',idleSeconds<90?'Чат активен · тишина '+idleSeconds+' сек':'Тишина '+elapsed(idleSeconds));
+  text('cohostSuggestion',d.ai_suggestion||'Подсказка появится после 90 секунд тишины во время эфира.');
   renderLeaderboard(d.leaderboard||[]);
   text('obs',!d.obs?'Выключен в настройках':d.obs_connected?'OBS подключён':'OBS недоступен');
   text('promoPeriod',d.promo_min+'–'+d.promo_max+' мин');
