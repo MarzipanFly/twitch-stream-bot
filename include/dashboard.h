@@ -22,6 +22,9 @@ typedef struct
     size_t queue_count, profile_count;
     unsigned long uptime_seconds;
     char broadcaster[128], game[256], title[512], track[256];
+    char ai_suggestion[512];
+    unsigned int ai_suggestion_sequence, chat_idle_seconds;
+    int ai_suggestion_pending;
     DashboardObs obs_state;
     DashboardLeader leaders[DASHBOARD_LEADERS];
     size_t leader_count;
