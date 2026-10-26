@@ -136,12 +136,12 @@ static BOOL CALLBACK detector_enum_window(HWND window, LPARAM parameter)
     char process_name[CONFIG_STRING_SIZE] = "";
     RECT rect;
     unsigned long long area = 0;
-    LONG_PTR style;
+    LONG style;
 
     if (!context || !IsWindowVisible(window) || IsIconic(window))
         return TRUE;
 
-    style = GetWindowLongPtrW(window, GWL_EXSTYLE);
+    style = GetWindowLongW(window, GWL_EXSTYLE);
     if ((style & WS_EX_TOOLWINDOW) != 0 || GetWindow(window, GW_OWNER) != NULL)
         return TRUE;
 
