@@ -149,6 +149,7 @@ BotResult obs_director_start(const AppConfig *config, ObsDirector *director)
         return BOT_OK;
     }
 
+    director->last_game_running = -1;
     director->active = 1;
     log_info("OBS director enabled: game scene '%s', chat scene '%s', Game Capture input '%s'",
              config->obs_director.game_scene, config->obs_director.chat_scene,
@@ -206,6 +207,11 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
         log_info("OBS director: manual scene change to '%s'; automatic switching paused for %u seconds",
                  scene, override_seconds);
     }
+    if (!director->state_known)
+        log_info("OBS director initial scene: '%s'", scene);
+    else if (strcmp(scene, director->last_seen_scene) != 0)
+        log_info("OBS director observed current scene: '%s'", scene);
+
     snprintf(director->last_seen_scene, sizeof(director->last_seen_scene), "%s", scene);
     director->state_known = 1;
 
@@ -253,6 +259,12 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
     {
         log_director_error(director, now, "could not enumerate Windows processes; no scene change made");
         return;
+    }
+    if (director->last_game_running != game_running)
+    {
+        log_info("OBS director game process '%s': %s",
+                 process, game_running ? "RUNNING" : "not running");
+        director->last_game_running = game_running;
     }
 
     /*
