@@ -2300,6 +2300,40 @@ static BotResult process_twitch_chat_notification(
     InterlockedExchange(&g_cohost_last_chat_tick, (LONG)GetTickCount());
     InterlockedIncrement(&g_cohost_chat_sequence);
 
+    /*
+     * Opt-in "Live" mode: respond only to explicit mentions, never to
+     * commands or ordinary conversation. Reuse the existing AI queue and
+     * per-viewer cooldown. A global cooldown prevents chat flooding.
+     */
+    if (config->ai.enabled && config->ai.live_chat_enabled &&
+        ai_chat_running() && dashboard_stream.is_live &&
+        chat_message.text[0] != config->bot.command_prefix &&
+        (strstr(chat_message.text, "Апельсин,") ||
+         strstr(chat_message.text, "апельсин,") ||
+         strstr(chat_message.text, "Апельсин?") ||
+         strstr(chat_message.text, "апельсин?") ||
+         strstr(chat_message.text, "ApelsinBot") ||
+         strstr(chat_message.text, "apelsinbot")))
+    {
+        static DWORD last_auto_reply_tick = 0;
+        static int has_auto_replied = 0;
+        DWORD tick = GetTickCount();
+        if (!has_auto_replied ||
+            (DWORD)(tick - last_auto_reply_tick) >=
+                config->ai.live_chat_cooldown_seconds * 1000UL)
+        {
+            AiChatStatus status = ai_chat_enqueue(
+                &chat_message, chat_message.text, &config->twitch);
+            if (status == AI_CHAT_QUEUED)
+            {
+                last_auto_reply_tick = tick;
+                has_auto_replied = 1;
+                log_info("Live AI chat: direct mention accepted from %s",
+                         chat_message.chatter_user_login);
+            }
+        }
+    }
+
     /* Conversational local AI command is dispatched asynchronously. */
     if (chat_message.text[0] == config->bot.command_prefix)
     {
