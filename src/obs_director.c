@@ -208,9 +208,10 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
         return;
     }
 
+    /* Any scene change not initiated below is treated as manual/external.
+     * Director-initiated changes update last_seen_scene immediately. */
     if (director->state_known &&
-        strcmp(scene, director->last_seen_scene) != 0 &&
-        strcmp(scene, director->last_director_scene) != 0)
+        strcmp(scene, director->last_seen_scene) != 0)
     {
         unsigned int override_seconds = config->obs_director.manual_override_seconds;
         director->manual_override_until_tick =
