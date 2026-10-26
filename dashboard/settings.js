@@ -22,6 +22,25 @@ function field(key,title,min,max,value) {
  button.dataset.key=key;button.textContent='Сохранить';
  inner.append(label,input);wrap.append(inner,button);return wrap;
 }
+function textField(key,title,value,placeholder='') {
+ const wrap=document.createElement('div');wrap.className='field';
+ const inner=document.createElement('div'),label=document.createElement('label');
+ label.htmlFor=key;label.textContent=title;
+ const input=document.createElement('input');input.id=key;input.type='text';
+ input.maxLength=255;input.value=String(value??'');input.placeholder=placeholder;
+ const button=document.createElement('button');button.dataset.key=key;button.textContent='Сохранить';
+ inner.append(label,input);wrap.append(inner,button);return wrap;
+}
+function selectField(key,title,value) {
+ const wrap=document.createElement('div');wrap.className='field';
+ const inner=document.createElement('div'),label=document.createElement('label');
+ label.htmlFor=key;label.textContent=title;
+ const select=document.createElement('select');select.id=key;
+ select.add(new Option('Включено','1'));select.add(new Option('Выключено','0'));
+ select.value=value?'1':'0';
+ const button=document.createElement('button');button.dataset.key=key;button.textContent='Сохранить';
+ inner.append(label,select);wrap.append(inner,button);return wrap;
+}
 async function load() {
  const response=await fetch('/api/status',{cache:'no-store'});
  if(!response.ok)throw Error('Бот недоступен');
@@ -30,6 +49,28 @@ async function load() {
    get(key).value=data[key]||'';
  get('numericFields').replaceChildren(...cfg.map(([id,title,min,max])=>
    field(id,title,min,max,data[id])));
+ get('automationFields').replaceChildren(
+  selectField('obs_enabled','OBS WebSocket',data.obs_config_enabled),
+  selectField('category_sync_enabled','Автоматическая категория Twitch',data.category_sync_enabled),
+  selectField('director_enabled','Умный режиссёр OBS',data.director_enabled),
+  selectField('director_auto_game','Автопереход на сцену «Игры»',data.director_auto_game),
+  selectField('director_auto_chat','Возврат на сцену «Общение»',data.director_auto_chat)
+ );
+ get('sceneFields').replaceChildren(
+  textField('category_chat_scene','Сцена общения (категория)',data.category_chat_scene,'Общение'),
+  textField('category_game_scene','Игровая сцена (категория)',data.category_game_scene,'Игры'),
+  textField('category_chat_category','Категория Twitch для общения',data.category_chat_category,'Just Chatting'),
+  textField('director_game_scene','Сцена «Игры» (режиссёр)',data.director_game_scene,'Игры'),
+  textField('director_chat_scene','Сцена «Общение» (режиссёр)',data.director_chat_scene,'Общение'),
+  textField('director_break_scene','Сцена «Перерыв» (резерв)',data.director_break_scene,'Перерыв')
+ );
+ get('timingFields').replaceChildren(
+  field('category_poll_seconds','Проверка категории, сек',2,60,data.category_poll_seconds),
+  field('director_start_delay','Задержка перехода в «Игры», сек',0,120,data.director_start_delay),
+  field('director_stop_delay','Задержка возврата в «Общение», сек',0,300,data.director_stop_delay),
+  field('director_manual_override','Пауза автоматики после ручного переключения, сек',0,600,data.director_manual_override),
+  field('director_poll_seconds','Частота проверки режиссёра, сек',1,30,data.director_poll_seconds)
+ );
  const parent=get('soundFields');parent.replaceChildren();
  (data.sounds||[]).forEach((sound,i)=>{
    const section=document.createElement('div');section.className='sound';
