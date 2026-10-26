@@ -104,16 +104,17 @@ static int is_process_running(const char *wanted_process)
 {
     HANDLE snapshot;
     PROCESSENTRY32A entry;
-    int found = 0;
+    int found = -1;
 
-    if (!wanted_process || !wanted_process[0]) return 0;
+    if (!wanted_process || !wanted_process[0]) return -1;
     snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snapshot == INVALID_HANDLE_VALUE) return 0;
+    if (snapshot == INVALID_HANDLE_VALUE) return -1;
 
     memset(&entry, 0, sizeof(entry));
     entry.dwSize = sizeof(entry);
     if (Process32FirstA(snapshot, &entry))
     {
+        found = 0;
         do
         {
             if (_stricmp(entry.szExeFile, wanted_process) == 0)
