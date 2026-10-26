@@ -506,6 +506,13 @@ static BotResult category_sync_read_active_game(
         CloseHandle(process_handle);
     }
 
+    if (!path_utf8[0])
+    {
+        /* Without the executable name we cannot safely distinguish a game
+         * from a browser or another foreground application. */
+        return BOT_ERR_TWITCH;
+    }
+
     if (path_utf8[0])
     {
         basename = strrchr(path_utf8, '\\');
