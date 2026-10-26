@@ -342,6 +342,52 @@ static void trim_whitespace(char *text)
         text[--length] = '\0';
 }
 
+static int contains_case_insensitive(const char *text, const char *needle)
+{
+    size_t i, j;
+    if (!text || !needle || !needle[0]) return 0;
+    for (i = 0; text[i]; ++i)
+    {
+        for (j = 0; needle[j] && text[i + j] &&
+             tolower((unsigned char)text[i + j]) ==
+             tolower((unsigned char)needle[j]); ++j)
+        {
+        }
+        if (!needle[j]) return 1;
+    }
+    return 0;
+}
+
+static void strip_technical_window_suffix(char *title)
+{
+    char *opening, *closing;
+    int technical;
+
+    if (!title || !title[0]) return;
+    opening = strrchr(title, '(');
+    if (!opening || opening == title) return;
+    closing = strrchr(opening, ')');
+    if (!closing || closing[1] != '\0') return;
+
+    technical =
+        contains_case_insensitive(opening, "directx") ||
+        contains_case_insensitive(opening, "vulkan") ||
+        contains_case_insensitive(opening, "opengl") ||
+        contains_case_insensitive(opening, "64bit") ||
+        contains_case_insensitive(opening, "32bit") ||
+        contains_case_insensitive(opening, "64-bit") ||
+        contains_case_insensitive(opening, "32-bit") ||
+        contains_case_insensitive(opening, "dx11") ||
+        contains_case_insensitive(opening, "dx12");
+    if (!technical) return;
+
+    while (opening > title &&
+           (opening[-1] == ' ' || opening[-1] == '\t'))
+        --opening;
+    *opening = '\0';
+    trim_whitespace(title);
+}
+
 static int contains_exe_suffix(const char *text)
 {
     size_t i, length;
@@ -454,6 +500,7 @@ static BotResult category_sync_read_active_game(
         return BOT_ERR_TWITCH;
 
     snprintf(query, query_size, "%s", candidate.title);
+    strip_technical_window_suffix(query);
     snprintf(process_name, process_name_size, "%s", candidate.process_name);
     snprintf(executable_query, sizeof(executable_query), "%s", candidate.process_name);
 
