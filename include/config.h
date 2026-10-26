@@ -83,7 +83,7 @@ typedef struct
     unsigned int poll_seconds;
 } CategorySyncConfig;
 
-/* Automatic scene switching based on a specific OBS Game Capture process. */
+/* Automatic scene switching based on detected fullscreen Windows applications. */
 typedef struct
 {
     int enabled;
