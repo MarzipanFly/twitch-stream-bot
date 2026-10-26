@@ -384,13 +384,13 @@ BotResult obs_websocket_request(ObsWebSocket *client, const char *request_type,
         request_data = cJSON_Parse(request_data_json);
         if (!cJSON_IsObject(request_data)) goto cleanup;
         written = snprintf(packet, sizeof(packet),
-            "{\\"op\\":6,\\"d\\":{\\"requestType\\":%s,\\"requestId\\":%s,\\"requestData\\":%s}}",
+            "{\"op\":6,\"d\":{\"requestType\":%s,\"requestId\":%s,\"requestData\":%s}}",
             quoted_type, quoted_id, request_data_json);
     }
     else
     {
         written = snprintf(packet, sizeof(packet),
-            "{\\"op\\":6,\\"d\\":{\\"requestType\\":%s,\\"requestId\\":%s}}",
+            "{\"op\":6,\"d\":{\"requestType\":%s,\"requestId\":%s}}",
             quoted_type, quoted_id);
     }
     if (written < 0 || (size_t)written >= sizeof(packet)) goto cleanup;
@@ -417,7 +417,7 @@ BotResult obs_websocket_request(ObsWebSocket *client, const char *request_type,
         {
             status = cJSON_GetObjectItemCaseSensitive(d, "requestStatus");
             success = cJSON_GetObjectItemCaseSensitive(status, "result");
-            if (!cJSON_IsTrue(success))
+            if (!success || !(success->type & cJSON_True))
             {
                 const cJSON *code = cJSON_GetObjectItemCaseSensitive(status, "code");
                 const cJSON *comment = cJSON_GetObjectItemCaseSensitive(status, "comment");
