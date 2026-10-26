@@ -53,6 +53,9 @@
 
 static ViewerChallenges g_viewer_challenges;
 static int g_viewer_challenges_enabled = 0;
+/* Monotonic activity markers used by the private AI cohost. */
+static volatile LONG g_cohost_last_chat_tick = 0;
+static volatile LONG g_cohost_chat_sequence = 0;
 
 static DWORD g_last_bruh_tick = 0;
 static int g_bruh_played = 0;
@@ -2293,6 +2296,10 @@ static BotResult process_twitch_chat_notification(
         strcmp(chat_message.chatter_user_id, config->twitch.bot_user_id) == 0)
         return BOT_OK;
 
+    /* Only real viewer messages reset the cohost's quiet-period timer. */
+    InterlockedExchange(&g_cohost_last_chat_tick, (LONG)GetTickCount());
+    InterlockedIncrement(&g_cohost_chat_sequence);
+
     /* Conversational local AI command is dispatched asynchronously. */
     if (chat_message.text[0] == config->bot.command_prefix)
     {
@@ -3813,6 +3820,11 @@ static BotResult run_bot_loop(
     int dashboard_peak = 0;
     char dashboard_peak_stream_id[TWITCH_STREAM_ID_SIZE] = "";
     int dashboard_running = 0;
+    LONG cohost_seen_chat_sequence = 0;
+    int cohost_suggested_this_idle = 0;
+    char cohost_suggestion[512] = "";
+    unsigned int cohost_suggestion_sequence = 0;
+    int cohost_suggestion_pending = 0;
 
     BotResult result;
     BotResult chat_result;
@@ -3903,6 +3915,8 @@ static BotResult run_bot_loop(
     dashboard_running = dashboard_start(config->dashboard.enabled,
                                          (unsigned short)config->dashboard.port);
     dashboard_started_tick = GetTickCount();
+    InterlockedExchange(&g_cohost_last_chat_tick, (LONG)dashboard_started_tick);
+    cohost_seen_chat_sequence = InterlockedCompareExchange(&g_cohost_chat_sequence, 0, 0);
     obs_state.recording = -1;
     obs_state.streaming = -1;
     last_obs_poll = (DWORD)(GetTickCount() - 15000UL);
@@ -4394,6 +4408,31 @@ static BotResult run_bot_loop(
             obs_director.last_detected_process[0] ?
                 obs_director.last_detected_process : NULL);
 
+        /* Offer at most one private suggestion during each viewer-chat quiet period. */
+        {
+            LONG chat_sequence = InterlockedCompareExchange(
+                &g_cohost_chat_sequence, 0, 0);
+            DWORD last_chat_tick = (DWORD)InterlockedCompareExchange(
+                &g_cohost_last_chat_tick, 0, 0);
+            if (chat_sequence != cohost_seen_chat_sequence)
+            {
+                cohost_seen_chat_sequence = chat_sequence;
+                cohost_suggested_this_idle = 0;
+            }
+            if (!dashboard_stream.is_live || !chat_connected ||
+                !config->ai.enabled || !ai_chat_running())
+                cohost_suggested_this_idle = 0;
+            else if (!cohost_suggested_this_idle &&
+                     (DWORD)(now - last_chat_tick) >= 90000UL)
+            {
+                if (ai_chat_request_cohost_suggestion())
+                {
+                    cohost_suggested_this_idle = 1;
+                    log_info("AI cohost: chat quiet for 90 seconds; requesting a private topic suggestion");
+                }
+            }
+        }
+
         /*
          * ----------------------------------------------------
          * PERIODIC OAUTH VALIDATION
@@ -4496,6 +4535,17 @@ static BotResult run_bot_loop(
                                   dashboard_stream.viewer_count : 0;
             dash_status.chat_connected = chat_connected;
             dash_status.ai_enabled = config->ai.enabled && ai_chat_running();
+            {
+                DWORD last_chat_tick = (DWORD)InterlockedCompareExchange(
+                    &g_cohost_last_chat_tick, 0, 0);
+                dash_status.chat_idle_seconds =
+                    (DWORD)(GetTickCount() - last_chat_tick) / 1000UL;
+                ai_chat_get_cohost_suggestion(
+                    dash_status.ai_suggestion,
+                    sizeof(dash_status.ai_suggestion),
+                    &dash_status.ai_suggestion_sequence,
+                    &dash_status.ai_suggestion_pending);
+            }
             dash_status.promo_enabled = config->promo.enabled;
             dash_status.reports_enabled = config->stream_report.enabled;
             dash_status.obs_enabled = config->obs.enabled;
