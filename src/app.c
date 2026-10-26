@@ -4495,6 +4495,28 @@ static BotResult run_bot_loop(
             dash_status.promo_enabled = config->promo.enabled;
             dash_status.reports_enabled = config->stream_report.enabled;
             dash_status.obs_enabled = config->obs.enabled;
+            dash_status.obs_config_enabled = config->obs.enabled;
+            dash_status.category_sync_enabled = config->category_sync.enabled;
+            dash_status.obs_director_enabled = config->obs_director.enabled;
+            dash_status.director_auto_game = config->obs_director.auto_game_scene;
+            dash_status.director_auto_chat = config->obs_director.auto_chat_scene;
+            dash_status.category_poll_seconds = config->category_sync.poll_seconds;
+            dash_status.director_start_delay = config->obs_director.game_start_delay_seconds;
+            dash_status.director_stop_delay = config->obs_director.game_stop_delay_seconds;
+            dash_status.director_manual_override = config->obs_director.manual_override_seconds;
+            dash_status.director_poll_seconds = config->obs_director.poll_seconds;
+            snprintf(dash_status.category_chat_scene,sizeof(dash_status.category_chat_scene),
+                     "%s",config->category_sync.chat_scene);
+            snprintf(dash_status.category_game_scene,sizeof(dash_status.category_game_scene),
+                     "%s",config->category_sync.game_scene);
+            snprintf(dash_status.category_chat_category,sizeof(dash_status.category_chat_category),
+                     "%s",config->category_sync.chat_category);
+            snprintf(dash_status.director_game_scene,sizeof(dash_status.director_game_scene),
+                     "%s",config->obs_director.game_scene);
+            snprintf(dash_status.director_chat_scene,sizeof(dash_status.director_chat_scene),
+                     "%s",config->obs_director.chat_scene);
+            snprintf(dash_status.director_break_scene,sizeof(dash_status.director_break_scene),
+                     "%s",config->obs_director.break_scene);
             dash_status.peak_observed = dashboard_peak;
             dash_status.promo_min = config->promo.min_minutes;
             dash_status.promo_max = config->promo.max_minutes;
