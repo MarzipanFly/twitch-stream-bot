@@ -103,7 +103,11 @@ async function save(key,button) {
    const snapshot=await response.json();
    if(snapshot.command_seq!==seq) {
     seq=snapshot.command_seq;
-    notify(snapshot.command_result||'Параметр обработан');
+    const result=snapshot.command_result||'Параметр обработан';
+    if(['obs_enabled','category_sync_enabled','director_enabled'].includes(key) &&
+       result.includes('сохранена'))
+      notify(result+'. Перезапусти ApelsinBot, чтобы перезапустить интеграцию.');
+    else notify(result);
     if(input.type==='password')input.value='';
     return;
    }
