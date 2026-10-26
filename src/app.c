@@ -56,6 +56,7 @@ static int g_viewer_challenges_enabled = 0;
 /* Monotonic activity markers used by the private AI cohost. */
 static volatile LONG g_cohost_last_chat_tick = 0;
 static volatile LONG g_cohost_chat_sequence = 0;
+static volatile LONG g_live_ai_stream_online = 0;
 
 static DWORD g_last_bruh_tick = 0;
 static int g_bruh_played = 0;
@@ -2306,7 +2307,8 @@ static BotResult process_twitch_chat_notification(
      * per-viewer cooldown. A global cooldown prevents chat flooding.
      */
     if (config->ai.enabled && config->ai.live_chat_enabled &&
-        ai_chat_running() && dashboard_stream.is_live &&
+        ai_chat_running() &&
+        InterlockedCompareExchange(&g_live_ai_stream_online, 0, 0) &&
         chat_message.text[0] != config->bot.command_prefix &&
         (strstr(chat_message.text, "Апельсин,") ||
          strstr(chat_message.text, "апельсин,") ||
@@ -3899,6 +3901,7 @@ static BotResult run_bot_loop(
     previous_live_state =
         initial_stream.is_live;
     dashboard_stream = initial_stream;
+    InterlockedExchange(&g_live_ai_stream_online, initial_stream.is_live ? 1 : 0);
     dashboard_peak = initial_stream.is_live ? initial_stream.viewer_count : 0;
     if (initial_stream.is_live)
         dashboard_chart_observe(&view_chart, &initial_stream);
@@ -4561,6 +4564,8 @@ static BotResult run_bot_loop(
         if (dashboard_running)
         {
             memset(&dash_status, 0, sizeof(dash_status));
+            InterlockedExchange(&g_live_ai_stream_online,
+                                dashboard_stream.is_live ? 1 : 0);
             dash_status.live = dashboard_stream.is_live;
             dash_status.viewers = dashboard_stream.is_live ?
                                   dashboard_stream.viewer_count : 0;
