@@ -3,6 +3,7 @@
 
 #include "bot_result.h"
 #include "config.h"
+#include <stddef.h>
 
 #define TWITCH_DEVICE_CODE_SIZE 512
 #define TWITCH_USER_CODE_SIZE 64
@@ -32,10 +33,17 @@ typedef struct {
     char login[TWITCH_AUTH_LOGIN_SIZE];
     char user_id[TWITCH_AUTH_USER_ID_SIZE];
     int expires_in;
+    char scopes[16][64];
+    size_t scope_count;
 } TwitchTokenValidation;
 
 BotResult twitch_auth_request_device_code(const TwitchConfig *config, TwitchDeviceCode *device);
 BotResult twitch_auth_poll_token(const TwitchConfig *config, const TwitchDeviceCode *device, TwitchAuthToken *token);
+BotResult twitch_auth_request_device_code_with_scopes(
+    const TwitchConfig *config, const char *scopes, TwitchDeviceCode *device);
+BotResult twitch_auth_poll_token_with_scopes(
+    const TwitchConfig *config, const TwitchDeviceCode *device,
+    const char *scopes, TwitchAuthToken *token);
 BotResult twitch_auth_validate_token(const char *access_token, TwitchTokenValidation *validation);
 
 #endif
