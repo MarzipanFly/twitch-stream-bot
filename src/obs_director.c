@@ -84,7 +84,8 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
     int detection_result;
     int game_running;
 
-    if (!config || !director || !director->active) return;
+    if (!config || !director || !director->active ||
+        !config->obs_director.enabled || !config->obs.enabled) return;
     now = GetTickCount();
     poll_seconds = config->obs_director.poll_seconds ?
                    config->obs_director.poll_seconds : 3;
