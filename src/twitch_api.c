@@ -359,12 +359,35 @@ static void normalize_category_name(const char *input, char *output, size_t capa
 static int category_match_score(const char *query, const char *name)
 {
     char normalized_query[512], normalized_name[512];
-    size_t qlen, nlen;
+    char query_base[512];
+    const char *suffix;
+    size_t qlen, nlen, base_length;
 
     if (!query || !name) return 0;
     if (strcmp(query, name) == 0) return 10000;
 
-    normalize_category_name(query, normalized_query, sizeof(normalized_query));
+    /*
+     * Game Capture titles often append technical details, e.g.
+     * "War Thunder (DirectX 12, 64bit)". Ignore a trailing parenthetical
+     * suffix for category matching, but only when it closes at end of string.
+     */
+    snprintf(query_base, sizeof(query_base), "%s", query);
+    suffix = strrchr(query_base, '(');
+    if (suffix && suffix > query_base)
+    {
+        const char *closing = strchr(suffix, ')');
+        if (closing && closing[1] == '\0')
+        {
+            base_length = (size_t)(suffix - query_base);
+            while (base_length > 0 &&
+                   (query_base[base_length - 1] == ' ' ||
+                    query_base[base_length - 1] == '\t'))
+                --base_length;
+            query_base[base_length] = '\0';
+        }
+    }
+
+    normalize_category_name(query_base, normalized_query, sizeof(normalized_query));
     normalize_category_name(name, normalized_name, sizeof(normalized_name));
     if (!normalized_query[0] || !normalized_name[0]) return 0;
     if (strcmp(normalized_query, normalized_name) == 0) return 10000;
