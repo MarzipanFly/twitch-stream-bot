@@ -391,7 +391,6 @@ BotResult twitch_search_category(
 {
     wchar_t wide_client_id[1024];
     wchar_t wide_access_token[2048];
-    wchar_t wide_query[2048];
     wchar_t wide_encoded_query[2048];
     wchar_t headers[4096];
     wchar_t path[4096];
