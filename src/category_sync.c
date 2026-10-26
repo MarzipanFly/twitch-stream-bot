@@ -492,9 +492,6 @@ static BotResult category_sync_read_active_game(
     (void)GetWindowThreadProcessId(window, &process_id);
 
     if (process_id != 0)
-        process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
-
-    if (process_id != 0)
     {
         HANDLE process_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if (process_snapshot != INVALID_HANDLE_VALUE)
