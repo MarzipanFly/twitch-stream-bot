@@ -11,19 +11,6 @@
 #define OBS_DIRECTOR_RECONNECT_MS 15000UL
 #define OBS_DIRECTOR_ERROR_LOG_MS 30000UL
 
-static int text_equal_ci(const char *a, const char *b)
-{
-    if (!a || !b) return 0;
-    while (*a && *b)
-    {
-        if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
-            return 0;
-        ++a;
-        ++b;
-    }
-    return *a == '\0' && *b == '\0';
-}
-
 static int read_current_scene(ObsDirector *director, char *scene, size_t size)
 {
     char response[4096];
