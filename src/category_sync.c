@@ -403,6 +403,11 @@ static BotResult category_sync_read_game_query(
     root = cJSON_Parse(response);
     if (!root) return BOT_ERR_JSON;
     settings = cJSON_GetObjectItemCaseSensitive(root, "inputSettings");
+    if (!cJSON_IsObject(settings))
+    {
+        cJSON_Delete(root);
+        return BOT_ERR_JSON;
+    }
     window = cJSON_GetObjectItemCaseSensitive(settings, "window");
     if (!cJSON_IsString(window) || !window->valuestring || !window->valuestring[0])
     {
