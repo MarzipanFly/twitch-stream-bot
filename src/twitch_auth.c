@@ -14,7 +14,38 @@
 #define TWITCH_AUTH_TOKEN_PATH L"/oauth2/token"
 #define TWITCH_AUTH_VALIDATE_PATH L"/oauth2/validate"
 
-BotResult twitch_auth_request_device_code(const TwitchConfig *config, TwitchDeviceCode *device)
+
+static int url_encode_scope_string(const char *input, char *output, size_t output_size)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    size_t i, used = 0;
+    if (!input || !output || output_size == 0) return 0;
+
+    for (i = 0; input[i] != '\0'; ++i)
+    {
+        unsigned char ch = (unsigned char)input[i];
+        int safe = (ch >= 'A' && ch <= 'Z') ||
+                   (ch >= 'a' && ch <= 'z') ||
+                   (ch >= '0' && ch <= '9') ||
+                   ch == '-' || ch == '_' || ch == '.' || ch == '~';
+        if (safe)
+        {
+            if (used + 1 >= output_size) return 0;
+            output[used++] = (char)ch;
+        }
+        else
+        {
+            if (used + 3 >= output_size) return 0;
+            output[used++] = '%';
+            output[used++] = hex[(ch >> 4) & 0x0F];
+            output[used++] = hex[ch & 0x0F];
+        }
+    }
+    output[used] = '\0';
+    return 1;
+}
+
+BotResult twitch_auth_request_device_code_with_scopes(const TwitchConfig *config, const char *scopes, TwitchDeviceCode *device)
 {
     HttpResponse response = {0};
     BotResult result;
@@ -25,8 +56,9 @@ BotResult twitch_auth_request_device_code(const TwitchConfig *config, TwitchDevi
     cJSON *expires_in_json = NULL;
     cJSON *interval_json = NULL;
     char body[1024];
+    char encoded_scopes[512];
 
-    if (config == NULL || device == NULL) return BOT_ERR_AUTH;
+    if (config == NULL || device == NULL || scopes == NULL || scopes[0] == '\0') return BOT_ERR_AUTH;
     if (config->client_id[0] == '\0') {
         log_error("Cannot start Twitch authentication: Client ID is empty");
         return BOT_ERR_AUTH;
@@ -34,9 +66,10 @@ BotResult twitch_auth_request_device_code(const TwitchConfig *config, TwitchDevi
 
     memset(device, 0, sizeof(*device));
 
-    snprintf(body, sizeof(body),
-             "client_id=%s&scopes=user%%3Aread%%3Achat%%20user%%3Awrite%%3Achat%%20moderator%%3Aread%%3Afollowers",
-             config->client_id);
+    if (!url_encode_scope_string(scopes, encoded_scopes, sizeof(encoded_scopes)))
+        return BOT_ERR_AUTH;
+    snprintf(body, sizeof(body), "client_id=%s&scopes=%s",
+             config->client_id, encoded_scopes);
 
     log_info("Requesting Twitch device authorization code...");
 
@@ -97,7 +130,13 @@ BotResult twitch_auth_request_device_code(const TwitchConfig *config, TwitchDevi
     return BOT_OK;
 }
 
-BotResult twitch_auth_poll_token(const TwitchConfig *config, const TwitchDeviceCode *device, TwitchAuthToken *token)
+BotResult twitch_auth_request_device_code(const TwitchConfig *config, TwitchDeviceCode *device)
+{
+    return twitch_auth_request_device_code_with_scopes(
+        config, "user:read:chat user:write:chat moderator:read:followers", device);
+}
+
+BotResult twitch_auth_poll_token_with_scopes(const TwitchConfig *config, const TwitchDeviceCode *device, const char *scopes, TwitchAuthToken *token)
 {
     HttpResponse response = {0};
     BotResult result;
@@ -107,16 +146,18 @@ BotResult twitch_auth_poll_token(const TwitchConfig *config, const TwitchDeviceC
     cJSON *expires_in_json = NULL;
     cJSON *message_json = NULL;
     char body[2048];
+    char encoded_scopes[512];
 
-    if (config == NULL || device == NULL || token == NULL) return BOT_ERR_AUTH;
+    if (config == NULL || device == NULL || token == NULL || scopes == NULL || scopes[0] == '\0') return BOT_ERR_AUTH;
     if (config->client_id[0] == '\0' || device->device_code[0] == '\0') return BOT_ERR_AUTH;
 
     memset(token, 0, sizeof(*token));
 
+    if (!url_encode_scope_string(scopes, encoded_scopes, sizeof(encoded_scopes)))
+        return BOT_ERR_AUTH;
     snprintf(body, sizeof(body),
-             "client_id=%s&scopes=user%%3Aread%%3Achat%%20user%%3Awrite%%3Achat%%20moderator%%3Aread%%3Afollowers"
-             "&device_code=%s&grant_type=urn%%3Aietf%%3Aparams%%3Aoauth%%3Agrant-type%%3Adevice_code",
-             config->client_id, device->device_code);
+             "client_id=%s&scopes=%s&device_code=%s&grant_type=urn%%3Aietf%%3Aparams%%3Aoauth%%3Agrant-type%%3Adevice_code",
+             config->client_id, encoded_scopes, device->device_code);
 
     result = http_post(TWITCH_AUTH_HOST, TWITCH_AUTH_TOKEN_PATH,
                        L"Content-Type: application/x-www-form-urlencoded\r\n",
@@ -179,6 +220,12 @@ BotResult twitch_auth_poll_token(const TwitchConfig *config, const TwitchDeviceC
     return BOT_ERR_AUTH;
 }
 
+BotResult twitch_auth_poll_token(const TwitchConfig *config, const TwitchDeviceCode *device, TwitchAuthToken *token)
+{
+    return twitch_auth_poll_token_with_scopes(
+        config, device, "user:read:chat user:write:chat moderator:read:followers", token);
+}
+
 BotResult twitch_auth_validate_token(const char *access_token, TwitchTokenValidation *validation)
 {
     HttpResponse response = {0};
@@ -188,6 +235,9 @@ BotResult twitch_auth_validate_token(const char *access_token, TwitchTokenValida
     cJSON *login_json = NULL;
     cJSON *user_id_json = NULL;
     cJSON *expires_in_json = NULL;
+    cJSON *scopes_json = NULL;
+    cJSON *scope_item = NULL;
+    int scope_index;
     wchar_t wide_token[2048];
     wchar_t headers[2300];
 
@@ -236,6 +286,7 @@ BotResult twitch_auth_validate_token(const char *access_token, TwitchTokenValida
     login_json = cJSON_GetObjectItemCaseSensitive(root, "login");
     user_id_json = cJSON_GetObjectItemCaseSensitive(root, "user_id");
     expires_in_json = cJSON_GetObjectItemCaseSensitive(root, "expires_in");
+    scopes_json = cJSON_GetObjectItemCaseSensitive(root, "scopes");
 
     if (!cJSON_IsString(client_id_json) ||
         !cJSON_IsString(login_json) ||
@@ -250,6 +301,24 @@ BotResult twitch_auth_validate_token(const char *access_token, TwitchTokenValida
     snprintf(validation->login, sizeof(validation->login), "%s", login_json->valuestring);
     snprintf(validation->user_id, sizeof(validation->user_id), "%s", user_id_json->valuestring);
     validation->expires_in = expires_in_json->valueint;
+
+    if (cJSON_IsArray(scopes_json))
+    {
+        int scope_total = cJSON_GetArraySize(scopes_json);
+        for (scope_index = 0;
+             scope_index < scope_total && validation->scope_count < 16;
+             ++scope_index)
+        {
+            scope_item = cJSON_GetArrayItem(scopes_json, scope_index);
+            if (cJSON_IsString(scope_item) && scope_item->valuestring)
+            {
+                snprintf(validation->scopes[validation->scope_count],
+                         sizeof(validation->scopes[validation->scope_count]),
+                         "%s", scope_item->valuestring);
+                ++validation->scope_count;
+            }
+        }
+    }
 
     cJSON_Delete(root);
     http_response_free(&response);

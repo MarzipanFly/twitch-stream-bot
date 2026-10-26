@@ -481,6 +481,173 @@ cleanup:
     return result;
 }
 
+
+BotResult http_patch(
+    const wchar_t *host,
+    const wchar_t *path,
+    const wchar_t *additional_headers,
+    const char *body,
+    HttpResponse *response
+)
+{
+    HINTERNET session = NULL;
+    HINTERNET connection = NULL;
+    HINTERNET request = NULL;
+
+    DWORD body_size = 0;
+
+    BotResult result =
+        BOT_ERR_NETWORK;
+
+    if (host == NULL ||
+        path == NULL ||
+        response == NULL)
+    {
+        return BOT_ERR_NETWORK;
+    }
+
+    response->status_code = 0;
+    response->body = NULL;
+    response->body_size = 0;
+
+    if (body != NULL)
+    {
+        body_size =
+            (DWORD)strlen(body);
+    }
+
+    session =
+        WinHttpOpen(
+            L"TwitchBot/0.6",
+            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+            WINHTTP_NO_PROXY_NAME,
+            WINHTTP_NO_PROXY_BYPASS,
+            0
+        );
+
+    if (session == NULL)
+    {
+        log_winhttp_error(
+            "WinHttpOpen"
+        );
+
+        goto cleanup;
+    }
+
+    connection =
+        WinHttpConnect(
+            session,
+            host,
+            INTERNET_DEFAULT_HTTPS_PORT,
+            0
+        );
+
+    if (connection == NULL)
+    {
+        log_winhttp_error(
+            "WinHttpConnect"
+        );
+
+        goto cleanup;
+    }
+
+    request =
+        WinHttpOpenRequest(
+            connection,
+            L"PATCH",
+            path,
+            NULL,
+            WINHTTP_NO_REFERER,
+            WINHTTP_DEFAULT_ACCEPT_TYPES,
+            WINHTTP_FLAG_SECURE
+        );
+
+    if (request == NULL)
+    {
+        log_winhttp_error(
+            "WinHttpOpenRequest"
+        );
+
+        goto cleanup;
+    }
+
+    if (additional_headers != NULL)
+    {
+        if (!WinHttpAddRequestHeaders(
+                request,
+                additional_headers,
+                (DWORD)-1L,
+                WINHTTP_ADDREQ_FLAG_ADD))
+        {
+            log_winhttp_error(
+                "WinHttpAddRequestHeaders"
+            );
+
+            goto cleanup;
+        }
+    }
+
+    if (!WinHttpSendRequest(
+            request,
+            WINHTTP_NO_ADDITIONAL_HEADERS,
+            0,
+            body_size > 0
+                ? (LPVOID)body
+                : WINHTTP_NO_REQUEST_DATA,
+            body_size,
+            body_size,
+            0))
+    {
+        log_winhttp_error(
+            "WinHttpSendRequest"
+        );
+
+        goto cleanup;
+    }
+
+    if (!WinHttpReceiveResponse(
+            request,
+            NULL))
+    {
+        log_winhttp_error(
+            "WinHttpReceiveResponse"
+        );
+
+        goto cleanup;
+    }
+
+    result =
+        query_status_and_body(
+            request,
+            response
+        );
+
+cleanup:
+
+    if (request != NULL)
+    {
+        WinHttpCloseHandle(
+            request
+        );
+    }
+
+    if (connection != NULL)
+    {
+        WinHttpCloseHandle(
+            connection
+        );
+    }
+
+    if (session != NULL)
+    {
+        WinHttpCloseHandle(
+            session
+        );
+    }
+
+    return result;
+}
+
 void http_response_free(
     HttpResponse *response
 )

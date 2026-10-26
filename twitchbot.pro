@@ -10,6 +10,8 @@ INCLUDEPATH += \
 
 SOURCES += \
     src/app.c \
+    src/category_sync.c \
+    src/obs_director.c \
     src/bot_result.c \
     src/chat_event.c \
     src/command_cooldown.c \
@@ -57,6 +59,8 @@ SOURCES += \
 
 HEADERS += \
     include/app.h \
+    include/category_sync.h \
+    include/obs_director.h \
     include/bot_result.h \
     include/chat_event.h \
     include/command_cooldown.h \

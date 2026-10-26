@@ -73,6 +73,32 @@ typedef struct
     char password[CONFIG_STRING_SIZE];
 } ObsConfig;
 
+typedef struct
+{
+    int enabled;
+    char chat_scene[CONFIG_STRING_SIZE];
+    char game_scene[CONFIG_STRING_SIZE];
+    char game_input[CONFIG_STRING_SIZE];
+    char chat_category[CONFIG_STRING_SIZE];
+    unsigned int poll_seconds;
+} CategorySyncConfig;
+
+/* Automatic scene switching based on a specific OBS Game Capture process. */
+typedef struct
+{
+    int enabled;
+    int auto_game_scene;
+    int auto_chat_scene;
+    char game_scene[CONFIG_STRING_SIZE];
+    char chat_scene[CONFIG_STRING_SIZE];
+    char break_scene[CONFIG_STRING_SIZE]; /* Reserved for a future idle/break rule. */
+    char game_input[CONFIG_STRING_SIZE];
+    unsigned int game_start_delay_seconds;
+    unsigned int game_stop_delay_seconds;
+    unsigned int manual_override_seconds;
+    unsigned int poll_seconds;
+} ObsDirectorConfig;
+
 /* Local Ollama model; never requires an Internet API key. */
 typedef struct
 {
@@ -128,6 +154,8 @@ typedef struct
 	DiscordConfig discord;
     BotConfig bot;
     ObsConfig obs;
+    CategorySyncConfig category_sync;
+    ObsDirectorConfig obs_director;
     AiConfig ai;
     PromoConfig promo;
     StreamReportConfig stream_report;

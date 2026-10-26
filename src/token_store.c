@@ -10,6 +10,7 @@
 #include <string.h>
 
 #define TOKEN_STORE_FILE "data/twitch_tokens.dat"
+#define TOKEN_STORE_BROADCAST_FILE "data/twitch_broadcast_tokens.dat"
 #define TOKEN_STORE_MAGIC   0x4B544254UL
 #define TOKEN_STORE_VERSION 1UL
 
@@ -22,7 +23,8 @@ typedef struct
 
 } TokenStorePayload;
 
-BotResult token_store_save(
+static BotResult token_store_save_to(
+    const char *filename,
     const TwitchAuthToken *token
 )
 {
@@ -35,7 +37,7 @@ BotResult token_store_save(
 
     size_t written;
 
-    if (token == NULL)
+    if (filename == NULL || token == NULL)
     {
         return BOT_ERR_STORAGE;
     }
@@ -108,7 +110,7 @@ BotResult token_store_save(
 
     file =
         fopen(
-            TOKEN_STORE_FILE,
+            filename,
             "wb"
         );
 
@@ -190,7 +192,18 @@ BotResult token_store_save(
     return BOT_OK;
 }
 
-BotResult token_store_load(
+BotResult token_store_save(const TwitchAuthToken *token)
+{
+    return token_store_save_to(TOKEN_STORE_FILE, token);
+}
+
+BotResult token_store_save_broadcast(const TwitchAuthToken *token)
+{
+    return token_store_save_to(TOKEN_STORE_BROADCAST_FILE, token);
+}
+
+static BotResult token_store_load_from(
+    const char *filename,
     TwitchAuthToken *token
 )
 {
@@ -207,7 +220,7 @@ BotResult token_store_load(
 
     TokenStorePayload payload;
 
-    if (token == NULL)
+    if (filename == NULL || token == NULL)
     {
         return BOT_ERR_STORAGE;
     }
@@ -220,7 +233,7 @@ BotResult token_store_load(
 
     file =
         fopen(
-            TOKEN_STORE_FILE,
+            filename,
             "rb"
         );
 
@@ -409,13 +422,23 @@ BotResult token_store_load(
     return BOT_OK;
 }
 
-BotResult token_store_delete(void)
+BotResult token_store_load(TwitchAuthToken *token)
+{
+    return token_store_load_from(TOKEN_STORE_FILE, token);
+}
+
+BotResult token_store_load_broadcast(TwitchAuthToken *token)
+{
+    return token_store_load_from(TOKEN_STORE_BROADCAST_FILE, token);
+}
+
+static BotResult token_store_delete_from(const char *filename)
 {
     DWORD attributes;
 
     attributes =
         GetFileAttributesA(
-            TOKEN_STORE_FILE
+            filename
         );
 
     if (attributes ==
@@ -425,7 +448,7 @@ BotResult token_store_delete(void)
     }
 
     if (!DeleteFileA(
-            TOKEN_STORE_FILE))
+            filename))
     {
         log_error(
             "Failed to delete Twitch token storage: %lu",
@@ -436,4 +459,15 @@ BotResult token_store_delete(void)
     }
 
     return BOT_OK;
+}
+
+
+BotResult token_store_delete(void)
+{
+    return token_store_delete_from(TOKEN_STORE_FILE);
+}
+
+BotResult token_store_delete_broadcast(void)
+{
+    return token_store_delete_from(TOKEN_STORE_BROADCAST_FILE);
 }

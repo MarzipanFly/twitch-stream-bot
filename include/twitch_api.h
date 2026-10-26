@@ -17,4 +17,19 @@ BotResult twitch_parse_user_response(
     TwitchUser *user
 );
 
+BotResult twitch_search_category(
+    const TwitchConfig *config,
+    const char *query,
+    char *category_id,
+    size_t category_id_size,
+    char *category_name,
+    size_t category_name_size
+);
+
+BotResult twitch_update_channel_category(
+    const TwitchConfig *config,
+    const char *broadcaster_id,
+    const char *category_id
+);
+
 #endif
