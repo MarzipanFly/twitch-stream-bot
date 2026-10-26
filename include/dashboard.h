@@ -30,6 +30,15 @@ typedef struct
     char telegram_url[CONFIG_STRING_SIZE],discord_url[CONFIG_STRING_SIZE];
     char telegram_chat_id[CONFIG_STRING_SIZE];
     unsigned int ai_cooldown, cooldown_normal, cooldown_game, cooldown_bruh;
+    /* Editable integration settings exposed to the loopback-only settings page. */
+    int category_sync_enabled, obs_director_enabled, director_auto_game, director_auto_chat;
+    int category_chat_scene_enabled, obs_director_enabled_unused;
+    unsigned int category_poll_seconds, director_start_delay, director_stop_delay;
+    unsigned int director_manual_override, director_poll_seconds;
+    char category_chat_scene[CONFIG_STRING_SIZE], category_game_scene[CONFIG_STRING_SIZE];
+    char category_chat_category[CONFIG_STRING_SIZE];
+    char director_game_scene[CONFIG_STRING_SIZE], director_chat_scene[CONFIG_STRING_SIZE];
+    char director_break_scene[CONFIG_STRING_SIZE];
     SoundConfig sounds[SOUND_MAX_COUNT];
     size_t sound_count;
     MusicTrack queued[MUSIC_QUEUE_CAPACITY];
