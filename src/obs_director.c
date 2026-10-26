@@ -228,18 +228,23 @@ void obs_director_tick(const AppConfig *config, ObsDirector *director)
         return;
     }
 
-    window_changed = strcmp(window, director->last_window_setting) != 0;
+    window_changed = !director->window_setting_known ||
+                     strcmp(window, director->last_window_setting) != 0;
     if (window_changed)
     {
         snprintf(director->last_window_setting, sizeof(director->last_window_setting),
                  "%s", window);
-        log_debug("OBS director selected game window: '%s'", window);
+        director->window_setting_known = 1;
+        log_info("OBS director Game Capture window setting: '%s'",
+                 window[0] ? window : "<empty>");
     }
 
     if (!extract_process_name(window, process, sizeof(process)))
     {
         log_director_error(director, now,
-            "Game Capture target does not identify a specific .exe process; automatic switching skipped");
+            window[0]
+                ? "Game Capture window setting does not end with a specific .exe process; automatic switching skipped"
+                : "Game Capture window setting is empty; select a specific game window in OBS source properties");
         return;
     }
 
