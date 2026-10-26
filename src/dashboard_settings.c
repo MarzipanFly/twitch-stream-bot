@@ -64,6 +64,61 @@ static int set_plain(AppConfig *cfg, const char *key, const char *value)
         if (!safe_text(value,sizeof(cfg->telegram.chat_id))) return 0;
         snprintf(cfg->telegram.chat_id,sizeof(cfg->telegram.chat_id),"%s",value);
     }
+    else if (!strcmp(key,"obs_enabled") ||
+             !strcmp(key,"category_sync_enabled") ||
+             !strcmp(key,"director_enabled") ||
+             !strcmp(key,"director_auto_game") ||
+             !strcmp(key,"director_auto_chat"))
+    {
+        if (!integer(value,0,1,&x)) return 0;
+        if (!strcmp(key,"obs_enabled")) cfg->obs.enabled=(int)x;
+        else if (!strcmp(key,"category_sync_enabled")) cfg->category_sync.enabled=(int)x;
+        else if (!strcmp(key,"director_enabled")) cfg->obs_director.enabled=(int)x;
+        else if (!strcmp(key,"director_auto_game")) cfg->obs_director.auto_game_scene=(int)x;
+        else cfg->obs_director.auto_chat_scene=(int)x;
+    }
+    else if (!strcmp(key,"category_chat_scene") ||
+             !strcmp(key,"category_game_scene") ||
+             !strcmp(key,"category_chat_category") ||
+             !strcmp(key,"director_game_scene") ||
+             !strcmp(key,"director_chat_scene") ||
+             !strcmp(key,"director_break_scene"))
+    {
+        char *destination=NULL;
+        size_t capacity=0;
+        if (!safe_text(value,CONFIG_STRING_SIZE) || !value[0]) return 0;
+        if (!strcmp(key,"category_chat_scene"))
+        { destination=cfg->category_sync.chat_scene; capacity=sizeof(cfg->category_sync.chat_scene); }
+        else if (!strcmp(key,"category_game_scene"))
+        { destination=cfg->category_sync.game_scene; capacity=sizeof(cfg->category_sync.game_scene); }
+        else if (!strcmp(key,"category_chat_category"))
+        { destination=cfg->category_sync.chat_category; capacity=sizeof(cfg->category_sync.chat_category); }
+        else if (!strcmp(key,"director_game_scene"))
+        { destination=cfg->obs_director.game_scene; capacity=sizeof(cfg->obs_director.game_scene); }
+        else if (!strcmp(key,"director_chat_scene"))
+        { destination=cfg->obs_director.chat_scene; capacity=sizeof(cfg->obs_director.chat_scene); }
+        else
+        { destination=cfg->obs_director.break_scene; capacity=sizeof(cfg->obs_director.break_scene); }
+        snprintf(destination,capacity,"%s",value);
+    }
+    else if (!strcmp(key,"category_poll_seconds") ||
+             !strcmp(key,"director_start_delay") ||
+             !strcmp(key,"director_stop_delay") ||
+             !strcmp(key,"director_manual_override") ||
+             !strcmp(key,"director_poll_seconds"))
+    {
+        long long minimum=0,maximum=600;
+        if (!strcmp(key,"category_poll_seconds")) { minimum=2; maximum=60; }
+        else if (!strcmp(key,"director_start_delay")) maximum=120;
+        else if (!strcmp(key,"director_stop_delay")) maximum=300;
+        else if (!strcmp(key,"director_poll_seconds")) { minimum=1; maximum=30; }
+        if (!integer(value,minimum,maximum,&x)) return 0;
+        if (!strcmp(key,"category_poll_seconds")) cfg->category_sync.poll_seconds=(unsigned int)x;
+        else if (!strcmp(key,"director_start_delay")) cfg->obs_director.game_start_delay_seconds=(unsigned int)x;
+        else if (!strcmp(key,"director_stop_delay")) cfg->obs_director.game_stop_delay_seconds=(unsigned int)x;
+        else if (!strcmp(key,"director_manual_override")) cfg->obs_director.manual_override_seconds=(unsigned int)x;
+        else cfg->obs_director.poll_seconds=(unsigned int)x;
+    }
     else if (!strcmp(key,"promo_min"))
     {
         if (!integer(value,1,60,&x) || x>cfg->promo.max_minutes) return 0;
@@ -111,12 +166,27 @@ static int save_plain(const AppConfig *cfg)
     if (!f) return 0;
     if (fprintf(f,"telegram_url=%s\ndiscord_url=%s\ntelegram_chat_id=%s\n"
                 "promo_min=%u\npromo_max=%u\nai_cooldown=%u\n"
-                "normal_cooldown=%u\ngame_cooldown=%u\nbruh_cooldown=%u\n",
+                "normal_cooldown=%u\ngame_cooldown=%u\nbruh_cooldown=%u\n"
+                "obs_enabled=%d\ncategory_sync_enabled=%d\ndirector_enabled=%d\n"
+                "director_auto_game=%d\ndirector_auto_chat=%d\n"
+                "category_chat_scene=%s\ncategory_game_scene=%s\ncategory_chat_category=%s\n"
+                "category_poll_seconds=%u\ndirector_game_scene=%s\ndirector_chat_scene=%s\n"
+                "director_break_scene=%s\ndirector_start_delay=%u\ndirector_stop_delay=%u\n"
+                "director_manual_override=%u\ndirector_poll_seconds=%u\n",
                 cfg->telegram.channel_url,cfg->discord.invite_url,
                 cfg->telegram.chat_id,cfg->promo.min_minutes,
                 cfg->promo.max_minutes,cfg->ai.cooldown_seconds,
                 cfg->cooldowns.normal_seconds,cfg->cooldowns.game_seconds,
-                cfg->cooldowns.bruh_seconds)<0) ok=0;
+                cfg->cooldowns.bruh_seconds,cfg->obs.enabled,
+                cfg->category_sync.enabled,cfg->obs_director.enabled,
+                cfg->obs_director.auto_game_scene,cfg->obs_director.auto_chat_scene,
+                cfg->category_sync.chat_scene,cfg->category_sync.game_scene,
+                cfg->category_sync.chat_category,cfg->category_sync.poll_seconds,
+                cfg->obs_director.game_scene,cfg->obs_director.chat_scene,
+                cfg->obs_director.break_scene,cfg->obs_director.game_start_delay_seconds,
+                cfg->obs_director.game_stop_delay_seconds,
+                cfg->obs_director.manual_override_seconds,
+                cfg->obs_director.poll_seconds)<0) ok=0;
     for(i=0;i<cfg->sound_count;++i)
     {
         if (fprintf(f,"sound_cost_%u=%lld\nsound_cooldown_%u=%u\n",
