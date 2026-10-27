@@ -101,7 +101,8 @@ static char *json_escape(const char *source)
     char *out;
     if (!source) return NULL;
     length = strlen(source);
-    if (length > 4096) return NULL;
+    /* System prompts can be longer than a viewer message; keep a generous bound. */
+    if (length > 16384) return NULL;
     out = (char *)malloc(length * 6 + 1);
     if (!out) return NULL;
     for (i = 0; i < length; ++i)
@@ -344,7 +345,18 @@ static int append_chat_message(char *payload, size_t capacity, size_t *used,
     if (!payload || !used || !message_count || !role || !content)
         return 0;
     quoted = json_escape(content);
-    if (!quoted) return 0;
+    if (!quoted)
+    {
+        log_warning("AI JSON escaping failed for %s message (input_bytes=%lu)",
+                    role, (unsigned long)strlen(content));
+        return 0;
+    }
+    if (*used >= capacity)
+    {
+        free(quoted);
+        log_warning("AI payload capacity exhausted before %s message", role);
+        return 0;
+    }
     n = snprintf(payload + *used, capacity - *used,
                  "%s{\"role\":\"%s\",\"content\":\"%s\"}",
                  *message_count ? "," : "", role, quoted);
