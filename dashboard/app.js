@@ -233,5 +233,22 @@ async function toggle(feature) {
  } catch(e) {toast('Ошибка: '+e.message);}
  finally {pending.delete(feature);button.disabled=false;await refresh();}
 }
+byId('aiTestButton').addEventListener('click',async()=>{
+ const input=byId('aiTestMessage'),button=byId('aiTestButton'),status=byId('aiTestStatus');
+ const message=input.value.trim();
+ if(!message){status.textContent='Сначала введи сообщение зрителя.';return;}
+ if(message.length>1200){status.textContent='Сообщение слишком длинное (максимум 1200 символов).';return;}
+ button.disabled=true;status.textContent='Отправляю запрос локальному ИИ…';
+ try{
+  const body=new URLSearchParams({action:'ai_test',message});
+  const response=await fetch('/api/control',{method:'POST',
+   headers:{'Content-Type':'application/x-www-form-urlencoded','X-Apelsin-Local':'1'},
+   body:body.toString(),cache:'no-store'});
+  if(response.status!==202)throw Error('Сервер отклонил тест ('+response.status+').');
+  status.textContent='Запрос принят. Подожди генерацию — черновик появится выше.';
+  await new Promise(r=>setTimeout(r,800));await refresh();
+ }catch(e){status.textContent='Ошибка: '+e.message;}
+ finally{button.disabled=false;}
+});
 for(const feature of ['ai','promo','reports'])byId('toggle-'+feature).addEventListener('click',()=>toggle(feature));
 refresh();setInterval(refresh,5000);
