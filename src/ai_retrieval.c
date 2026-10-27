@@ -3,11 +3,35 @@
 #include "logger.h"
 #include <stdio.h>
 #include <string.h>
+#include <windows.h>
 
 #define KNOWLEDGE_FILE "knowledge/facts.tsv"
 #define MAX_LINE 1600
 #define MAX_TOKENS 28
 #define MAX_DOCS 2
+
+static FILE *open_knowledge_file(void)
+{
+    FILE *f = fopen(KNOWLEDGE_FILE, "rb");
+    char exe_path[MAX_PATH], candidate[MAX_PATH * 2], *slash;
+    if (!f) f = fopen("../twitch-stream-bot/knowledge/facts.tsv", "rb");
+    if (!f) f = fopen("../knowledge/facts.tsv", "rb");
+    if (f) return f;
+    /* Qt Creator may launch the executable with a different current directory. */
+    if (GetModuleFileNameA(NULL, exe_path, sizeof(exe_path)) > 0)
+    {
+        slash = strrchr(exe_path, '\\');
+        if (!slash) slash = strrchr(exe_path, '/');
+        if (slash)
+        {
+            *slash = '\\0';
+            if (snprintf(candidate, sizeof(candidate),
+                         "%s\\knowledge\\facts.tsv", exe_path) > 0)
+                f = fopen(candidate, "rb");
+        }
+    }
+    return f;
+}
 
 /* ASCII/Cyrillic case folding. Does not depend on Windows console locale. */
 static void fold(const char *in, char *out, size_t cap)
@@ -116,9 +140,7 @@ int ai_retrieval_search(const char *question, const char *previous_question,
         scope = ai_game_scope_from_text(previous_question);
     token_count = make_tokens(question, previous_question, tokens);
     if (!token_count) return 0;
-    f = fopen(KNOWLEDGE_FILE, "rb");
-    if (!f) f = fopen("../twitch-stream-bot/knowledge/facts.tsv", "rb");
-    if (!f) f = fopen("../knowledge/facts.tsv", "rb");
+    f = open_knowledge_file();
     if (!f)
     {
         static int warned_missing = 0;
