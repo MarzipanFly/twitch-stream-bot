@@ -64,6 +64,8 @@ typedef struct
     double audio_volume;
     int music_action; /* 1 skip current; 2 clear upcoming */
     int mark_moment;
+    int ai_test_action;
+    char ai_test_message[512];
     int settings_action;
     char settings_key[80];
     char settings_value[CONFIG_STRING_SIZE];
