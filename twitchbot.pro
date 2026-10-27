@@ -5,8 +5,8 @@ CONFIG -= app_bundle
 CONFIG -= qt
 
 INCLUDEPATH += \
-    $$PWD/include \
-    $$PWD/third_party/cjson
+    $$$PWD/include \
+    $$$PWD/third_party/cjson
 
 SOURCES += \
     src/app.c \
@@ -127,8 +127,8 @@ win32-msvc* {
 
 win32 {
     # Keep the reviewed local AI knowledge available beside the built executable.
-    QMAKE_POST_LINK += $escape_expand(\\n\\t)if not exist \"$OUT_PWD\\knowledge\" mkdir \"$OUT_PWD\\knowledge\"
-    QMAKE_POST_LINK += $escape_expand(\\n\\t)copy /Y \"$PWD\\knowledge\\facts.tsv\" \"$OUT_PWD\\knowledge\\facts.tsv\"
+    QMAKE_POST_LINK += $$escape_expand(\\n\\t)if not exist \"$$OUT_PWD\\knowledge\" mkdir \"$$OUT_PWD\\knowledge\"
+    QMAKE_POST_LINK += $$escape_expand(\\n\\t)copy /Y \"$$PWD\\knowledge\\facts.tsv\" \"$$OUT_PWD\\knowledge\\facts.tsv\"
 }
 
 DISTFILES += \
