@@ -20,6 +20,9 @@ int ai_chat_start(const AiConfig *config);
 AiChatStatus ai_chat_enqueue(const TwitchChatMessage *message,
                              const char *question,
                              const TwitchConfig *twitch);
+AiChatStatus ai_chat_enqueue_live(const TwitchChatMessage *message,
+                                  const char *question,
+                                  const TwitchConfig *twitch);
 /* Reset recent history (and update the local file if opted in). */
 int ai_chat_forget(const char *user_id);
 /* Explicit per-viewer opt-in/opt-out for memory across streams.
