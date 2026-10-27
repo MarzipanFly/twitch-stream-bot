@@ -30,6 +30,8 @@ async function refresh() {
   else if(!d.chat) text('cohostIdle','Ожидание подключения к чату');
   else text('cohostIdle',idleSeconds<90?'Чат активен · тишина '+idleSeconds+' сек':'Тишина '+elapsed(idleSeconds));
   text('cohostSuggestion',d.ai_suggestion||'Подсказка появится после 90 секунд тишины во время эфира.');
+  text('aiTestReply',d.ai_test_pending?'Генерирую ответ…':(d.ai_test_reply||'Здесь появится тестовый ответ.'));
+  text('aiTestStatus',d.ai_test_pending?'ИИ генерирует ответ локально…':(d.ai_test_reply?'Готово. Ответ не отправлялся в Twitch.':'Для теста ИИ должен быть включён, Ollama запущена.'));
   renderLeaderboard(d.leaderboard||[]);
   text('obs',!d.obs?'Выключен в настройках':d.obs_connected?'OBS подключён':'OBS недоступен');
   text('promoPeriod',d.promo_min+'–'+d.promo_max+' мин');
@@ -245,7 +247,7 @@ byId('aiTestButton').addEventListener('click',async()=>{
    headers:{'Content-Type':'application/x-www-form-urlencoded','X-Apelsin-Local':'1'},
    body:body.toString(),cache:'no-store'});
   if(response.status!==202)throw Error('Сервер отклонил тест ('+response.status+').');
-  status.textContent='Запрос принят. Подожди генерацию — черновик появится выше.';
+  status.textContent='Запрос принят. Ответ появится в отдельном блоке ниже.';
   await new Promise(r=>setTimeout(r,800));await refresh();
  }catch(e){status.textContent='Ошибка: '+e.message;}
  finally{button.disabled=false;}
