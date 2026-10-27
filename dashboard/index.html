@@ -37,6 +37,7 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
 .list-body{max-height:230px;overflow-y:auto}.chart-svg{width:100%;height:170px;border:1px solid #34333a;border-radius:12px;background:#151519}
 .sub-nav{font-size:13px;color:var(--orange);margin-right:12px;text-decoration:none}
 @media(max-width:540px){.range{width:86px}} 
+.ai-test-input{display:block;width:100%;min-height:112px;resize:vertical;margin-top:12px;padding:13px 14px;border:1px solid #51434a;border-radius:12px;background:#15151b;color:var(--text);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;outline:none;transition:border-color .15s,box-shadow .15s}.ai-test-input::placeholder{color:#777783}.ai-test-input:focus{border-color:var(--orange);box-shadow:0 0 0 3px #ff9a3320}.ai-test-button{margin-top:10px;min-height:42px}.ai-test-button:disabled{opacity:.55;cursor:wait}#aiTestStatus{overflow-wrap:anywhere}
 </style>
 <script defer src="/app.js"></script>
 </head>
@@ -91,8 +92,8 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
     <div class="divider"></div>
     <div class="eyebrow">Тестовый чат · безопасный режим</div>
     <p class="note">Введи пример сообщения зрителя. ИИ подготовит черновик в панели; он не отправляется в Twitch и не сохраняется в память зрителя.</p>
-    <textarea id="aiTestMessage" rows="3" maxlength="1200" placeholder="Например: Апельсин, как думаешь, получится победить?"></textarea>
-    <button class="primary" id="aiTestButton" type="button">Сгенерировать тестовый ответ</button>
+    <textarea class="ai-test-input" id="aiTestMessage" rows="3" maxlength="500" placeholder="Например: Апельсин, как думаешь, получится победить?"></textarea>
+    <button class="action-btn ai-test-button" id="aiTestButton" type="button">Сгенерировать ответ</button>
     <p class="note" id="aiTestStatus" aria-live="polite">Для теста ИИ должен быть включён, Ollama запущена.</p>
    </article>
    <article class="panel">
