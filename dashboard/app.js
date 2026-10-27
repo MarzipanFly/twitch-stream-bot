@@ -237,7 +237,7 @@ byId('aiTestButton').addEventListener('click',async()=>{
  const input=byId('aiTestMessage'),button=byId('aiTestButton'),status=byId('aiTestStatus');
  const message=input.value.trim();
  if(!message){status.textContent='Сначала введи сообщение зрителя.';return;}
- if(message.length>1200){status.textContent='Сообщение слишком длинное (максимум 1200 символов).';return;}
+ if(message.length>500){status.textContent='Сообщение слишком длинное (максимум 500 символов).';return;}
  button.disabled=true;status.textContent='Отправляю запрос локальному ИИ…';
  try{
   const body=new URLSearchParams({action:'ai_test',message});
