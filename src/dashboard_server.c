@@ -134,7 +134,8 @@ static int status_json(char *json, size_t capacity)
         "\"queue\":%u,\"profiles\":%u,\"peak\":%d,\"uptime\":%lu,"
         "\"promo_min\":%u,\"promo_max\":%u,\"obs_connected\":%s,"
         "\"obs_recording\":%d,\"obs_streaming\":%d,"
-        "\"obs_result_seq\":%u,\"ai_suggestion_seq\":%u,\"chat_idle_seconds\":%u,\"ai_suggestion_pending\":%s,\"broadcaster\":",
+        "\"obs_result_seq\":%u,\"ai_suggestion_seq\":%u,\"chat_idle_seconds\":%u,\"ai_suggestion_pending\":%s,"
+        "\"ai_test_seq\":%u,\"ai_test_pending\":%s,\"broadcaster\":",
         s.live ? "true" : "false", s.viewers, s.chat_connected ? "true" : "false",
         s.ai_enabled ? "true" : "false", s.promo_enabled ? "true" : "false",
         s.reports_enabled ? "true" : "false", s.obs_enabled ? "true" : "false",
@@ -143,7 +144,8 @@ static int status_json(char *json, size_t capacity)
         s.obs_state.connected ? "true" : "false",
         s.obs_state.recording, s.obs_state.streaming, s.obs_result_sequence,
          s.ai_suggestion_sequence, s.chat_idle_seconds,
-         s.ai_suggestion_pending ? "true" : "false");
+         s.ai_suggestion_pending ? "true" : "false",
+         s.ai_test_sequence, s.ai_test_pending ? "true" : "false");
     if (len < 0 || (size_t)len >= capacity) return 0;
     n = (size_t)len;
     if (!json_quote(json,capacity,&n,s.broadcaster) ||
@@ -155,6 +157,8 @@ static int status_json(char *json, size_t capacity)
         !json_quote(json,capacity,&n,s.track) ||
          !json_append(json,capacity,&n,",\"ai_suggestion\":") ||
          !json_quote(json,capacity,&n,s.ai_suggestion) ||
+        !json_append(json,capacity,&n,",\"ai_test_reply\":") ||
+        !json_quote(json,capacity,&n,s.ai_test_reply) ||
         !json_append(json,capacity,&n,",\"obs_scene\":") ||
         !json_quote(json,capacity,&n,s.obs_state.scene) ||
         !json_append(json,capacity,&n,",\"obs_result\":") ||
