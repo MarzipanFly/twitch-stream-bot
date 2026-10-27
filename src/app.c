@@ -4593,6 +4593,11 @@ static BotResult run_bot_loop(
                     sizeof(dash_status.ai_suggestion),
                     &dash_status.ai_suggestion_sequence,
                     &dash_status.ai_suggestion_pending);
+                ai_chat_get_test_reply(
+                    dash_status.ai_test_reply,
+                    sizeof(dash_status.ai_test_reply),
+                    &dash_status.ai_test_sequence,
+                    &dash_status.ai_test_pending);
             }
             dash_status.promo_enabled = config->promo.enabled;
             dash_status.reports_enabled = config->stream_report.enabled;
