@@ -480,6 +480,38 @@ static int queue_setting(const char *body)
         LeaveCriticalSection(&g_dashboard.lock);
         return 1;
     }
+    if(starts_with(body,"action=ai_test&message="))
+    {
+        const char *cur=body+strlen("action=ai_test&message=");
+        char value[512];size_t n=0;
+        while(*cur)
+        {
+            unsigned char c=(unsigned char)*cur++;
+            if(c=='%')
+            {
+                int a,b;unsigned char x,y;
+                if(!cur[0]||!cur[1])return 0;
+                x=(unsigned char)cur[0];y=(unsigned char)cur[1];
+                a=(x>='0'&&x<='9')?x-'0':(x>='A'&&x<='F')?x-'A'+10:
+                  (x>='a'&&x<='f')?x-'a'+10:-1;
+                b=(y>='0'&&y<='9')?y-'0':(y>='A'&&y<='F')?y-'A'+10:
+                  (y>='a'&&y<='f')?y-'a'+10:-1;
+                if(a<0||b<0)return 0;
+                c=(unsigned char)(a*16+b);cur+=2;
+            }
+            else if(c=='+')c=' ';
+            if(c<32||c==127||n+1>=sizeof(value))return 0;
+            value[n++]=(char)c;
+        }
+        value[n]='\\0';
+        if(!n)return 0;
+        EnterCriticalSection(&g_dashboard.lock);
+        if(p->ai_test_action){LeaveCriticalSection(&g_dashboard.lock);return 0;}
+        p->ai_test_action=1;
+        snprintf(p->ai_test_message,sizeof(p->ai_test_message),"%s",value);
+        LeaveCriticalSection(&g_dashboard.lock);
+        return 1;
+    }
     if(starts_with(body,"action=setting&key="))
     {
         const char *sep=strstr(body+19,"&value=");
