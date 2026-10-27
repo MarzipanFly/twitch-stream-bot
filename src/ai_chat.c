@@ -882,7 +882,7 @@ void ai_chat_get_cohost_suggestion(char *text, size_t capacity,
         snprintf(text, capacity, "%s", g_ai.cohost_suggestion);
     }
     if (sequence) *sequence = g_ai.cohost_sequence;
-    if (pending) *pending = g_ai.cohost_pending;
+    if (pending) *pending = g_ai.cohost_pending && !g_ai.test_pending;
     LeaveCriticalSection(&g_ai.lock);
 }
 
