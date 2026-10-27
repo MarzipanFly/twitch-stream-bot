@@ -687,12 +687,14 @@ static DWORD WINAPI ai_worker_thread(LPVOID unused)
 
             /* Known factual traps are answered from the offline knowledge base.
              * Other questions still go to the conversational local model. */
-            if (ai_knowledge_direct_answer(job.question, answer, sizeof(answer)))
+            if (!job.is_test &&
+                ai_knowledge_direct_answer(job.question, answer, sizeof(answer)))
             {
                 log_info("AI vetted game answer served from local knowledge");
                 generated = 1;
             }
-            else if (ai_tactics_reply(job.question, previous_questions,
+            else if (!job.is_test &&
+                     ai_tactics_reply(job.question, previous_questions,
                                       previous_count, answer, sizeof(answer)))
             {
                 log_info("AI situational FC tactical plan served (viewer=%s)",
