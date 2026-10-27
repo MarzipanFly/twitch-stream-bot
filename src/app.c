@@ -2324,7 +2324,7 @@ static BotResult process_twitch_chat_notification(
             (DWORD)(tick - last_auto_reply_tick) >=
                 config->ai.live_chat_cooldown_seconds * 1000UL)
         {
-            AiChatStatus status = ai_chat_enqueue(
+            AiChatStatus status = ai_chat_enqueue_live(
                 &chat_message, chat_message.text, &config->twitch);
             if (status == AI_CHAT_QUEUED)
             {
