@@ -41,5 +41,7 @@ void ai_chat_get_cohost_suggestion(char *text, size_t capacity,
                                    unsigned int *sequence, int *pending);
 /* Generate a dashboard-only reply draft; never sends to Twitch or stores viewer memory. */
 int ai_chat_request_test_reply(const char *message);
+void ai_chat_get_test_reply(char *text, size_t capacity,
+                            unsigned int *sequence, int *pending);
 
 #endif
