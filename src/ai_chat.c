@@ -630,7 +630,7 @@ static DWORD WINAPI ai_worker_thread(LPVOID unused)
                         g_ai.count * sizeof(g_ai.jobs[0]));
             {
                 AiMemory *memory = NULL;
-                if (job.is_suggestion)
+                if (job.is_suggestion || job.is_test)
                     memset(&history, 0, sizeof(history));
                 else
                 {
@@ -671,7 +671,7 @@ static DWORD WINAPI ai_worker_thread(LPVOID unused)
                                             obs_process, answer, sizeof(answer));
             EnterCriticalSection(&g_ai.lock);
             stopping = g_ai.stopping;
-            still_current = job.is_suggestion ? 1 :
+            still_current = (job.is_suggestion || job.is_test) ? 1 :
                             memory_revision_valid_locked(job.user_id, revision);
             LeaveCriticalSection(&g_ai.lock);
             if (stopping) return 0;
