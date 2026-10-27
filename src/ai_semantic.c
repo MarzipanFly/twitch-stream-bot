@@ -50,9 +50,11 @@ static int available_file(char *filename, size_t capacity,
         "../twitch-stream-bot/knowledge/facts.tsv",
         "../knowledge/facts.tsv"
     };
-    size_t i;
+    char exe_path[MAX_PATH], *slash;
+    char exe_knowledge[MAX_PATH * 2];
+    size_t i, path_count = sizeof(paths)/sizeof(paths[0]);
     WIN32_FILE_ATTRIBUTE_DATA details;
-    for (i = 0; i < sizeof(paths)/sizeof(paths[0]); ++i)
+    for (i = 0; i < path_count; ++i)
     {
         if (!GetFileAttributesExA(paths[i], GetFileExInfoStandard, &details) ||
             (details.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
@@ -62,6 +64,27 @@ static int available_file(char *filename, size_t capacity,
         *modified = details.ftLastWriteTime;
         *size = details.nFileSizeLow;
         return 1;
+    }
+    /* Qt Creator may launch the executable with a different current directory. */
+    if (GetModuleFileNameA(NULL, exe_path, sizeof(exe_path)) > 0)
+    {
+        slash = strrchr(exe_path, '\\');
+        if (!slash) slash = strrchr(exe_path, '/');
+        if (slash)
+        {
+            *slash = '\\0';
+            if (snprintf(exe_knowledge, sizeof(exe_knowledge),
+                         "%s\\knowledge\\facts.tsv", exe_path) > 0 &&
+                GetFileAttributesExA(exe_knowledge, GetFileExInfoStandard, &details) &&
+                !(details.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            {
+                if (details.nFileSizeHigh) return 0;
+                snprintf(filename, capacity, "%s", exe_knowledge);
+                *modified = details.ftLastWriteTime;
+                *size = details.nFileSizeLow;
+                return 1;
+            }
+        }
     }
     return 0;
 }
