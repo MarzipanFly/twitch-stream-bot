@@ -503,7 +503,7 @@ static int queue_setting(const char *body)
             if(c<32||c==127||n+1>=sizeof(value))return 0;
             value[n++]=(char)c;
         }
-        value[n]='\\0';
+        value[n]='\0';
         if(!n)return 0;
         EnterCriticalSection(&g_dashboard.lock);
         if(p->ai_test_action){LeaveCriticalSection(&g_dashboard.lock);return 0;}
@@ -790,6 +790,7 @@ int dashboard_take_changes(DashboardChanges *changes)
     pending = changes->ai != -1 || changes->promo != -1 ||
               changes->reports != -1 || changes->obs_action != 0 ||
               changes->audio_action || changes->music_action ||
-              changes->mark_moment || changes->settings_action;
+              changes->mark_moment || changes->settings_action ||
+              changes->ai_test_action;
     return pending;
 }
