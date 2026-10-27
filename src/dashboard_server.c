@@ -43,6 +43,7 @@ static void changes_reset(DashboardChanges *v)
     v->music_action=0;v->mark_moment=0;
     v->settings_action=0;
     v->settings_key[0]='\0';v->settings_value[0]='\0';
+    v->ai_test_action=0;v->ai_test_message[0]='\0';
 }
 void dashboard_load_preferences(AppConfig *cfg)
 {
