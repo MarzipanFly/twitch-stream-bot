@@ -38,6 +38,7 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
 .sub-nav{font-size:13px;color:var(--orange);margin-right:12px;text-decoration:none}
 @media(max-width:540px){.range{width:86px}} 
 .ai-test-input{display:block;width:100%;min-height:112px;resize:vertical;margin-top:12px;padding:13px 14px;border:1px solid #51434a;border-radius:12px;background:#15151b;color:var(--text);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;outline:none;transition:border-color .15s,box-shadow .15s}.ai-test-input::placeholder{color:#777783}.ai-test-input:focus{border-color:var(--orange);box-shadow:0 0 0 3px #ff9a3320}.ai-test-button{margin-top:10px;min-height:42px}.ai-test-button:disabled{opacity:.55;cursor:wait}#aiTestStatus{overflow-wrap:anywhere}
+.ai-test-result{margin-top:12px;padding:14px;border:1px solid #3c4a3f;border-radius:12px;background:#171d19}.ai-test-result p{margin:8px 0 0;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text)}
 </style>
 <script defer src="/app.js"></script>
 </head>
@@ -95,6 +96,7 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
     <textarea class="ai-test-input" id="aiTestMessage" rows="3" maxlength="500" placeholder="Например: Апельсин, как думаешь, получится победить?"></textarea>
     <button class="action-btn ai-test-button" id="aiTestButton" type="button">Сгенерировать ответ</button>
     <p class="note" id="aiTestStatus" aria-live="polite">Для теста ИИ должен быть включён, Ollama запущена.</p>
+    <div class="ai-test-result" id="aiTestResultBox"><div class="eyebrow">Ответ ИИ · только для тебя</div><p id="aiTestReply">Здесь появится тестовый ответ.</p></div>
    </article>
    <article class="panel">
    <div class="section-head"><h2>Управление функциями</h2><span class="minor">Изменения без перезапуска</span></div>
