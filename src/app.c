@@ -3995,6 +3995,18 @@ static BotResult run_bot_loop(
         if (dashboard_running && dashboard_take_changes(&dash_changes))
         {
             int changed = 0;
+            if (dash_changes.ai_test_action)
+            {
+                int accepted = config->ai.enabled && ai_chat_running() &&
+                    ai_chat_request_test_reply(dash_changes.ai_test_message);
+                snprintf(command_message,sizeof(command_message),"%s",
+                         accepted ?
+                         "Тестовый ответ генерируется; в Twitch он не отправляется" :
+                         "Не удалось запустить тест: включи ИИ или освободи очередь");
+                ++command_sequence;
+                SecureZeroMemory(dash_changes.ai_test_message,
+                                 sizeof(dash_changes.ai_test_message));
+            }
             if (dash_changes.settings_action)
             {
                 const char *key=dash_changes.settings_key;
