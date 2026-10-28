@@ -27,6 +27,7 @@ typedef struct
     int ai_suggestion_pending;
     char ai_test_reply[800];
     unsigned int ai_test_sequence;
+    unsigned int ai_test_history_count;
     int ai_test_pending;
     DashboardObs obs_state;
     DashboardLeader leaders[DASHBOARD_LEADERS];
