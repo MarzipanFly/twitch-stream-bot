@@ -1,0 +1,9 @@
+# Experimental CUDA/WSL2 QLoRA training dependencies for training/train_lora.py
+# Install in a fresh virtual environment; select the PyTorch build matching your CUDA setup first.
+torch>=2.6.0
+transformers>=4.51.0
+datasets>=3.5.0
+peft>=0.15.0
+trl>=0.23.0
+accelerate>=1.6.0
+bitsandbytes>=0.45.0
