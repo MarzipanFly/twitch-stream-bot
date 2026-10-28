@@ -189,7 +189,8 @@ int ai_retrieval_search(const char *question, const char *previous_question,
             else if (strstr(lower_facts, tokens[i])) score += 1;
         }
         /* Avoid accidental matches to generic "Create" in off-topic queries. */
-        if (score < 3) continue;
+        /* Require a distinctive lexical match for unscoped queries. */
+        if (score < (scope == AI_GAME_NONE ? 6 : 3)) continue;
         {
             char formatted[MAX_LINE], temp[MAX_LINE];
             int n = snprintf(formatted, sizeof(formatted),
