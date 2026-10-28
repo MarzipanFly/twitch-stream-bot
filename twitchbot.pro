@@ -5,8 +5,8 @@ CONFIG -= app_bundle
 CONFIG -= qt
 
 INCLUDEPATH += \
-    $PWD/include \
-    $PWD/third_party/cjson
+    $$PWD/include \
+    $$PWD/third_party/cjson
 
 SOURCES += \
     src/app.c \
