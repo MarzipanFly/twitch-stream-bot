@@ -7,7 +7,16 @@ typedef enum {
     AI_GAME_ETS2,
     AI_GAME_FC,
     AI_GAME_PHASMO,
-    AI_GAME_WOT
+    AI_GAME_WOT,
+    AI_GAME_WAR_THUNDER,
+    AI_GAME_VALORANT,
+    AI_GAME_CS2,
+    AI_GAME_LOL,
+    AI_GAME_ROCKET_LEAGUE,
+    AI_GAME_FACTORIO,
+    AI_GAME_SATISFACTORY,
+    AI_GAME_STARDEW,
+    AI_GAME_DBD
 } AiGameScope;
 
 /* Detect explicit game names in viewer questions, not implicit assumptions.
