@@ -76,7 +76,14 @@ static int stop_word(const char *s)
     const char *stop[] = {
         "что","как","это","есть","мне","для","про","или","ещё","еще",
         "куда","чего","если","когда","можно","лучше","какие","какой",
-        "почему","скажи","расскажи","начать","дальше","игре","моде"
+        "почему","скажи","расскажи","начать","дальше","игре","моде",
+        /* Game names identify the namespace, but are not evidence for
+         * choosing a particular fact within that game. */
+        "fifa","фифа","minecraft","майнкрафт","create","креат",
+        "ets2","phasmophobia","фазма","wot","танки","valorant",
+        "валорант","cs2","league","legends","rocket","factorio",
+        "факторио","satisfactory","сатисфактори","stardew","dbd",
+        "sports","euro","truck","game","игра","игры","версия","26","27"
     };
     size_t i;
     for (i = 0; i < sizeof(stop)/sizeof(stop[0]); ++i)
