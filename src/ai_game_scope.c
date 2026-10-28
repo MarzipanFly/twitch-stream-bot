@@ -50,6 +50,32 @@ AiGameScope ai_game_scope_from_text(const char *text)
     lowercase(text, s, sizeof(s));
     if (strstr(s, "phasmophobia") || strstr(s, "фазм"))
         return AI_GAME_PHASMO;
+    if (strstr(s, "war thunder") || strstr(s, "вартандер") ||
+        strstr(s, "вар тандер") || strstr(s, "вар тандер") ||
+        strstr(s, "вартандер"))
+        return AI_GAME_WAR_THUNDER;
+    if (strstr(s, "valorant") || strstr(s, "валорант"))
+        return AI_GAME_VALORANT;
+    if (strstr(s, "counter-strike") || strstr(s, "counter strike") ||
+        strstr(s, "cs2") || strstr(s, "cs 2") || strstr(s, "кс2") ||
+        strstr(s, "кс 2"))
+        return AI_GAME_CS2;
+    /* Do not treat lol/лол as a game: those are also common chat reactions. */
+    if (strstr(s, "league of legends") || strstr(s, "лига легенд"))
+        return AI_GAME_LOL;
+    if (strstr(s, "rocket league") || strstr(s, "рокет лига") ||
+        strstr(s, "рокет лиг"))
+        return AI_GAME_ROCKET_LEAGUE;
+    if (strstr(s, "factorio") || strstr(s, "факторио"))
+        return AI_GAME_FACTORIO;
+    if (strstr(s, "satisfactory") || strstr(s, "сатисфактори"))
+        return AI_GAME_SATISFACTORY;
+    if (strstr(s, "stardew valley") || strstr(s, "стардью") ||
+        strstr(s, "стардеу"))
+        return AI_GAME_STARDEW;
+    if (strstr(s, "dead by daylight") || strstr(s, "дбд") ||
+        strstr(s, "dbd"))
+        return AI_GAME_DBD;
     if (strstr(s, "world of tanks") || strstr(s, "wot") ||
         strstr(s, "мир танков") || strstr(s, "танки"))
         return AI_GAME_WOT;
@@ -58,7 +84,8 @@ AiGameScope ai_game_scope_from_text(const char *text)
         return AI_GAME_ETS2;
     if (strstr(s, "fifa") || strstr(s, "фифа") ||
         strstr(s, "ea sports fc") || strstr(s, "ea fc") ||
-        strstr(s, "fc 26") || strstr(s, "fc26") || strstr(s, "фк26"))
+        strstr(s, "fc 26") || strstr(s, "fc26") || strstr(s, "фк26") ||
+        strstr(s, "fc 27") || strstr(s, "fc27") || strstr(s, "фк27"))
         return AI_GAME_FC;
     if (strstr(s, "minecraft") || strstr(s, "майнкрафт") ||
         strstr(s, "create") || strstr(s, "креат") ||
