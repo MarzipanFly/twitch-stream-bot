@@ -704,7 +704,9 @@ static DWORD WINAPI ai_worker_thread(LPVOID unused)
                 log_info("AI vetted game answer served from local knowledge");
                 generated = 1;
             }
-            else if (!job.is_test &&
+            /* Spontaneous live-chat mentions use the model and topical RAG;
+             * fixed multi-paragraph tactics are reserved for explicit !bot QA. */
+            else if (!job.is_test && !job.is_live_chat &&
                      ai_tactics_reply(job.question, previous_questions,
                                       previous_count, answer, sizeof(answer)))
             {
