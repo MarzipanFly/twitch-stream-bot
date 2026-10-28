@@ -39,6 +39,7 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
 @media(max-width:540px){.range{width:86px}} 
 .ai-test-input{display:block;width:100%;min-height:112px;resize:vertical;margin-top:12px;padding:13px 14px;border:1px solid #51434a;border-radius:12px;background:#15151b;color:var(--text);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;outline:none;transition:border-color .15s,box-shadow .15s}.ai-test-input::placeholder{color:#777783}.ai-test-input:focus{border-color:var(--orange);box-shadow:0 0 0 3px #ff9a3320}.ai-test-button{margin-top:10px;min-height:42px}.ai-test-button:disabled{opacity:.55;cursor:wait}#aiTestStatus{overflow-wrap:anywhere}
 .ai-test-result{margin-top:12px;padding:14px;border:1px solid #3c4a3f;border-radius:12px;background:#171d19}.ai-test-result p{margin:8px 0 0;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text)}
+.ai-test-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px}.ai-test-reset{background:#2f3038;color:#f0f0f4;border:1px solid #55535e}.ai-test-reset:hover{background:#41414d}
 </style>
 <script defer src="/app.js"></script>
 </head>
@@ -92,9 +93,13 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
     <p class="note">Одна подсказка на период тишины. Новое сообщение зрителя сбрасывает ожидание следующей подсказки. Генерация выполняется в фоне.</p>
     <div class="divider"></div>
     <div class="eyebrow">Тестовый чат · безопасный режим</div>
-    <p class="note">Введи пример сообщения зрителя. ИИ подготовит черновик в панели; он не отправляется в Twitch и не сохраняется в память зрителя.</p>
+    <p class="note">Введи пример сообщения зрителя. ИИ подготовит черновик без отправки в Twitch. До четырёх предыдущих реплик теста хранятся только в оперативной памяти; после перезапуска или сброса они исчезают.</p>
     <textarea class="ai-test-input" id="aiTestMessage" rows="3" maxlength="500" placeholder="Например: Апельсин, как думаешь, получится победить?"></textarea>
-    <button class="action-btn ai-test-button" id="aiTestButton" type="button">Сгенерировать ответ</button>
+    <div class="ai-test-actions">
+      <button class="action-btn ai-test-button" id="aiTestButton" type="button">Сгенерировать ответ</button>
+      <button class="action-btn ai-test-reset" id="aiTestResetButton" type="button">Начать новый диалог</button>
+    </div>
+    <p class="note" id="aiTestHistoryInfo">Контекст диалога: 0 из 4 ответов (только в RAM).</p>
     <p class="note" id="aiTestStatus" aria-live="polite">Для теста ИИ должен быть включён, Ollama запущена.</p>
     <div class="ai-test-result" id="aiTestResultBox"><div class="eyebrow">Ответ ИИ · только для тебя</div><p id="aiTestReply">Здесь появится тестовый ответ.</p></div>
    </article>
