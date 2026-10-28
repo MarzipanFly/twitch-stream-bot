@@ -31,6 +31,7 @@ async function refresh() {
   else text('cohostIdle',idleSeconds<90?'Чат активен · тишина '+idleSeconds+' сек':'Тишина '+elapsed(idleSeconds));
   text('cohostSuggestion',d.ai_suggestion||'Подсказка появится после 90 секунд тишины во время эфира.');
   text('aiTestReply',d.ai_test_pending?'Генерирую ответ…':(d.ai_test_reply||'Здесь появится тестовый ответ.'));
+  text('aiTestHistoryInfo','Контекст диалога: '+(Number(d.ai_test_turns)||0)+' из 4 ответов (только в RAM).');
   text('aiTestStatus',d.ai_test_pending?'ИИ генерирует ответ локально…':(d.ai_test_reply?'Готово. Ответ не отправлялся в Twitch.':'Для теста ИИ должен быть включён, Ollama запущена.'));
   renderLeaderboard(d.leaderboard||[]);
   text('obs',!d.obs?'Выключен в настройках':d.obs_connected?'OBS подключён':'OBS недоступен');
@@ -235,6 +236,20 @@ async function toggle(feature) {
  } catch(e) {toast('Ошибка: '+e.message);}
  finally {pending.delete(feature);button.disabled=false;await refresh();}
 }
+byId('aiTestResetButton').addEventListener('click',async()=>{
+ const button=byId('aiTestResetButton'),status=byId('aiTestStatus');
+ button.disabled=true;
+ try{
+  const body=new URLSearchParams({action:'ai_test_reset'});
+  const response=await fetch('/api/control',{method:'POST',
+   headers:{'Content-Type':'application/x-www-form-urlencoded','X-Apelsin-Local':'1'},
+   body:body.toString(),cache:'no-store'});
+  if(response.status!==202)throw Error('Сброс отклонён ('+response.status+').');
+  status.textContent='Сбрасываю временную историю диалога…';
+  await new Promise(r=>setTimeout(r,700));await refresh();
+ }catch(e){status.textContent='Не удалось очистить историю: '+e.message;}
+ finally{button.disabled=false;}
+});
 byId('aiTestButton').addEventListener('click',async()=>{
  const input=byId('aiTestMessage'),button=byId('aiTestButton'),status=byId('aiTestStatus');
  const message=input.value.trim();
