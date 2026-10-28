@@ -46,3 +46,10 @@ tests/.tmp_settings/
 
 # Viewer challenge regression test fixtures
 tests/.tmp_challenges/
+
+# Local AI fine-tuning outputs (never commit model weights or eval reports)
+training/generated/
+training/adapters/
+training/merged/
+ai_eval_report.json
+ai_eval_full.json
