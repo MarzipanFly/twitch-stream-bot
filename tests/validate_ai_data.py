@@ -16,7 +16,8 @@ TRUSTED_HOSTS = {
     "kineticgames.co.uk", "www.kineticgames.co.uk", "worldoftanks.eu",
     "store.steampowered.com", "wiki.warthunder.com", "playvalorant.com",
     "www.counter-strike.net", "www.leagueoflegends.com",
-    "www.rocketleague.com", "wiki.factorio.com"
+    "www.rocketleague.com", "wiki.factorio.com",
+    "help.steampowered.com", "www.epicgames.com"
 }
 
 
