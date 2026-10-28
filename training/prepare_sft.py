@@ -83,6 +83,8 @@ def main():
     if not 5 <= args.validation_percent <= 25:
         parser.error("--validation-percent must be between 5 and 25")
     records = read_records(args.input)
+    if len(records) < 300:
+        print('WARNING: only %d curated dialogues; use this as a pilot, not a production fine-tune.' % len(records), file=sys.stderr)
     train, validation = split_records(records, args.seed, args.validation_percent)
     write_jsonl(args.out_dir / "sft_train.jsonl", train)
     write_jsonl(args.out_dir / "sft_validation.jsonl", validation)
