@@ -42,7 +42,8 @@ typedef struct
     TwitchConfig twitch; /* Snapshot avoids racing token refresh in the main loop. */
     int is_suggestion; /* Private streamer prompt; never delivered to Twitch. */
     int is_live_chat; /* Explicit mention; apply conversational persona. */
-    int is_test; /* Dashboard draft only; never deliver or remember. */
+    int is_test; /* Dashboard draft only; never deliver or persist. */
+    unsigned int test_revision;
 } AiJob;
 
 typedef struct
@@ -93,6 +94,8 @@ typedef struct
     char test_reply[AI_RESPONSE_BYTES + 1];
     unsigned int test_sequence;
     int test_pending;
+    unsigned int test_revision;
+    AiMemory test_history; /* Four ephemeral exchanges; never written to disk. */
 } AiState;
 
 static AiState g_ai;
@@ -670,7 +673,9 @@ static DWORD WINAPI ai_worker_thread(LPVOID unused)
                         g_ai.count * sizeof(g_ai.jobs[0]));
             {
                 AiMemory *memory = NULL;
-                if (job.is_suggestion || job.is_test)
+                if (job.is_test)
+                    history = g_ai.test_history;
+                else if (job.is_suggestion)
                     memset(&history, 0, sizeof(history));
                 else
                 {
@@ -725,11 +730,32 @@ static DWORD WINAPI ai_worker_thread(LPVOID unused)
                 g_ai.cohost_pending = 0;
                 if (job.is_test)
                 {
-                    g_ai.test_pending = 0;
-                    snprintf(g_ai.test_reply, sizeof(g_ai.test_reply), "%s",
-                             generated ? answer :
-                             "Не удалось сгенерировать ответ. Проверь лог Ollama.");
-                    ++g_ai.test_sequence;
+                    /* Reset while a request is generating invalidates its result. */
+                    if (job.test_revision == g_ai.test_revision)
+                    {
+                        AiMemoryTurn *turn;
+                        g_ai.test_pending = 0;
+                        snprintf(g_ai.test_reply, sizeof(g_ai.test_reply), "%s",
+                                 generated ? answer :
+                                 "Не удалось сгенерировать ответ. Проверь лог Ollama.");
+                        ++g_ai.test_sequence;
+                        if (generated)
+                        {
+                            if (g_ai.test_history.count >= AI_MEMORY_TURNS)
+                            {
+                                memmove(&g_ai.test_history.turns[0],
+                                        &g_ai.test_history.turns[1],
+                                        (AI_MEMORY_TURNS - 1) *
+                                        sizeof(g_ai.test_history.turns[0]));
+                                --g_ai.test_history.count;
+                            }
+                            turn = &g_ai.test_history.turns[g_ai.test_history.count++];
+                            snprintf(turn->question, sizeof(turn->question),
+                                     "%s", job.question);
+                            snprintf(turn->answer, sizeof(turn->answer),
+                                     "%s", answer);
+                        }
+                    }
                 }
                 else if (generated)
                 {
@@ -1113,6 +1139,7 @@ int ai_chat_request_test_reply(const char *message)
     snprintf(job->login, sizeof(job->login), "тестовый зритель");
     snprintf(job->question, sizeof(job->question), "%s", message);
     job->is_test = 1;
+    job->test_revision = g_ai.test_revision;
     g_ai.cohost_pending = 1;
     g_ai.test_pending = 1;
     g_ai.test_reply[0] = '\0';
@@ -1123,14 +1150,31 @@ int ai_chat_request_test_reply(const char *message)
 }
 
 void ai_chat_get_test_reply(char *text, size_t capacity,
-                            unsigned int *sequence, int *pending)
+                            unsigned int *sequence, int *pending,
+                            unsigned int *history_count)
 {
-    if (!text || !capacity) return;
+    if (!g_ai.started) return;
     EnterCriticalSection(&g_ai.lock);
-    snprintf(text, capacity, "%s", g_ai.test_reply);
+    if (text && capacity)
+        snprintf(text, capacity, "%s", g_ai.test_reply);
     if (sequence) *sequence = g_ai.test_sequence;
     if (pending) *pending = g_ai.test_pending;
+    if (history_count) *history_count = (unsigned int)g_ai.test_history.count;
     LeaveCriticalSection(&g_ai.lock);
+}
+
+int ai_chat_reset_test_conversation(void)
+{
+    if (!g_ai.started) return 0;
+    EnterCriticalSection(&g_ai.lock);
+    ++g_ai.test_revision;
+    SecureZeroMemory(&g_ai.test_history, sizeof(g_ai.test_history));
+    SecureZeroMemory(g_ai.test_reply, sizeof(g_ai.test_reply));
+    g_ai.test_pending = 0;
+    ++g_ai.test_sequence;
+    LeaveCriticalSection(&g_ai.lock);
+    log_info("Private AI test conversation reset (no Twitch delivery)");
+    return 1;
 }
 
 AiChatStatus ai_chat_enqueue(const TwitchChatMessage *message,
