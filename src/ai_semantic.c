@@ -10,7 +10,7 @@
 #include <string.h>
 #include <math.h>
 
-#define SEM_MAX_DOCS 128
+#define SEM_MAX_DOCS 192
 #define SEM_EMBED_BATCH 12
 #define SEM_MAX_DIM 2048
 #define SEM_MAX_LINE 1600
