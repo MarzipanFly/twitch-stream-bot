@@ -135,7 +135,7 @@ static int status_json(char *json, size_t capacity)
         "\"promo_min\":%u,\"promo_max\":%u,\"obs_connected\":%s,"
         "\"obs_recording\":%d,\"obs_streaming\":%d,"
         "\"obs_result_seq\":%u,\"ai_suggestion_seq\":%u,\"chat_idle_seconds\":%u,\"ai_suggestion_pending\":%s,"
-        "\"ai_test_seq\":%u,\"ai_test_pending\":%s,\"broadcaster\":",
+        "\"ai_test_seq\":%u,\"ai_test_pending\":%s,\"ai_test_turns\":%u,\"broadcaster\":",
         s.live ? "true" : "false", s.viewers, s.chat_connected ? "true" : "false",
         s.ai_enabled ? "true" : "false", s.promo_enabled ? "true" : "false",
         s.reports_enabled ? "true" : "false", s.obs_enabled ? "true" : "false",
@@ -145,7 +145,8 @@ static int status_json(char *json, size_t capacity)
         s.obs_state.recording, s.obs_state.streaming, s.obs_result_sequence,
          s.ai_suggestion_sequence, s.chat_idle_seconds,
          s.ai_suggestion_pending ? "true" : "false",
-         s.ai_test_sequence, s.ai_test_pending ? "true" : "false");
+         s.ai_test_sequence, s.ai_test_pending ? "true" : "false",
+         s.ai_test_history_count);
     if (len < 0 || (size_t)len >= capacity) return 0;
     n = (size_t)len;
     if (!json_quote(json,capacity,&n,s.broadcaster) ||
@@ -482,6 +483,19 @@ static int queue_setting(const char *body)
         p->audio_volume=vol/100.0;
         snprintf(p->audio_input,sizeof(p->audio_input),"%s",
                  g_dashboard.status.obs_state.audio[idx].name);
+        LeaveCriticalSection(&g_dashboard.lock);
+        return 1;
+    }
+    if(!strcmp(body, "action=ai_test_reset"))
+    {
+        EnterCriticalSection(&g_dashboard.lock);
+        if(p->ai_test_action)
+        {
+            LeaveCriticalSection(&g_dashboard.lock);
+            return 0;
+        }
+        p->ai_test_action=2;
+        p->ai_test_message[0]='\0';
         LeaveCriticalSection(&g_dashboard.lock);
         return 1;
     }
