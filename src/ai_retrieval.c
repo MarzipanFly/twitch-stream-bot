@@ -83,7 +83,8 @@ static int stop_word(const char *s)
         "ets2","phasmophobia","фазма","wot","танки","valorant",
         "валорант","cs2","league","legends","rocket","factorio",
         "факторио","satisfactory","сатисфактори","stardew","dbd",
-        "sports","euro","truck","game","игра","игры","версия","26","27"
+        "sports","euro","truck","game","игра","игры","версия","26","27",
+        "игровой","игровая","игровые"
     };
     size_t i;
     for (i = 0; i < sizeof(stop)/sizeof(stop[0]); ++i)
@@ -114,7 +115,16 @@ static size_t make_tokens(const char *question, const char *prev,
                            !strncmp(lowered + start, "acc", 3) ||
                            !strncmp(lowered + start, "jei", 3) ||
                            !strncmp(lowered + start, "emi", 3) ||
-                           !strncmp(lowered + start, "rpm", 3)))))
+                           !strncmp(lowered + start, "rpm", 3) ||
+                           !strncmp(lowered + start, "fps", 3) ||
+                           !strncmp(lowered + start, "tps", 3) ||
+                           !strncmp(lowered + start, "cpu", 3) ||
+                           !strncmp(lowered + start, "gpu", 3) ||
+                           !strncmp(lowered + start, "mmr", 3) ||
+                           !strncmp(lowered + start, "eco", 3) ||
+                           !strncmp(lowered + start, "pvp", 3) ||
+                           !strncmp(lowered + start, "pve", 3) ||
+                           !strncmp(lowered + start, "dlc", 3)))))
             continue;
         memcpy(tokens[n], lowered + start, len);
         tokens[n][len] = '\0';
@@ -138,7 +148,7 @@ int ai_retrieval_search(const char *question, const char *previous_question,
     char best[MAX_DOCS][MAX_LINE] = {{0}};
     int ranks[MAX_DOCS] = {0};
     size_t token_count, i;
-    int found = 0;
+    int found = 0, technical_term = 0;
     AiGameScope scope;
     if (!out || capacity < 128) return 0;
     out[0] = '\0';
@@ -147,6 +157,23 @@ int ai_retrieval_search(const char *question, const char *previous_question,
         scope = ai_game_scope_from_text(previous_question);
     token_count = make_tokens(question, previous_question, tokens);
     if (!token_count) return 0;
+    /* A technical term has a distinctive meaning even without a game name. */
+    for (i = 0; i < token_count; ++i)
+    {
+        static const char *terms[] = {
+            "fps","tps","cpu","gpu","mmr","eco","ping","jitter",
+            "пинг","фпс","джиттер","статтер","rubberbanding",
+            "packet","latency","frametime","нерф","бафф"
+        };
+        size_t j;
+        for (j = 0; j < sizeof(terms)/sizeof(terms[0]); ++j)
+            if (!strcmp(tokens[i], terms[j]))
+            {
+                technical_term = 1;
+                break;
+            }
+        if (technical_term) break;
+    }
     f = open_knowledge_file();
     if (!f)
     {
@@ -197,7 +224,7 @@ int ai_retrieval_search(const char *question, const char *previous_question,
         }
         /* Avoid accidental matches to generic "Create" in off-topic queries. */
         /* Require a distinctive lexical match for unscoped queries. */
-        if (score < (scope == AI_GAME_NONE ? 6 : 3)) continue;
+        if (score < (scope == AI_GAME_NONE ? (technical_term ? 3 : 6) : 3)) continue;
         {
             char formatted[MAX_LINE], temp[MAX_LINE];
             int n = snprintf(formatted, sizeof(formatted),
