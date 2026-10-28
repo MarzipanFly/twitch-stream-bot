@@ -6,6 +6,7 @@
 #include "ai_text.h"
 #include "ai_retrieval.h"
 #include "ai_semantic.h"
+#include "ai_game_scope.h"
 #include "ai_tactics.h"
 
 #include <windows.h>
@@ -473,15 +474,20 @@ static int ollama_generate(const char *model, const AiJob *job,
                                  ai_knowledge_create_facts()))
             goto cleanup;
     }
-    /* Retrieve only locally reviewed facts; no external network requests. */
-    if (ai_semantic_search(job->question,
-                            history->count ?
-                            history->turns[history->count - 1].question : "",
-                            retrieved, sizeof(retrieved)) ||
-        ai_retrieval_search(job->question,
-                            history->count ?
-                            history->turns[history->count - 1].question : "",
-                            retrieved, sizeof(retrieved)))
+    /* Prefer exact knowledge matches. Only use semantic retrieval when
+     * the viewer named a game (or is continuing a named game's discussion).
+     * Ordinary chat should not trigger an expensive global embedding search. */
+    if (ai_retrieval_search(job->question,
+                             history->count ?
+                             history->turns[history->count - 1].question : "",
+                             retrieved, sizeof(retrieved)) ||
+        ((ai_game_scope_from_text(job->question) != AI_GAME_NONE ||
+          (history->count && ai_game_scope_from_text(
+              history->turns[history->count - 1].question) != AI_GAME_NONE)) &&
+         ai_semantic_search(job->question,
+                             history->count ?
+                             history->turns[history->count - 1].question : "",
+                             retrieved, sizeof(retrieved))))
         if (!append_chat_message(payload, AI_PAYLOAD_CAPACITY, &used,
                                  &message_count, "system", retrieved))
             goto cleanup;
