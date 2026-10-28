@@ -3998,11 +3998,15 @@ static BotResult run_bot_loop(
             if (dash_changes.ai_test_action)
             {
                 int accepted = config->ai.enabled && ai_chat_running() &&
-                    ai_chat_request_test_reply(dash_changes.ai_test_message);
+                    (dash_changes.ai_test_action == 2 ?
+                     ai_chat_reset_test_conversation() :
+                     ai_chat_request_test_reply(dash_changes.ai_test_message));
                 snprintf(command_message,sizeof(command_message),"%s",
                          accepted ?
-                         "Тестовый ответ генерируется; в Twitch он не отправляется" :
-                         "Не удалось запустить тест: включи ИИ или освободи очередь");
+                         (dash_changes.ai_test_action == 2 ?
+                          "История приватного тестового чата очищена" :
+                          "Тестовый ответ генерируется; в Twitch он не отправляется") :
+                         "Не удалось выполнить тест: включи ИИ или освободи очередь");
                 ++command_sequence;
                 SecureZeroMemory(dash_changes.ai_test_message,
                                  sizeof(dash_changes.ai_test_message));
@@ -4597,7 +4601,8 @@ static BotResult run_bot_loop(
                     dash_status.ai_test_reply,
                     sizeof(dash_status.ai_test_reply),
                     &dash_status.ai_test_sequence,
-                    &dash_status.ai_test_pending);
+                    &dash_status.ai_test_pending,
+                    &dash_status.ai_test_history_count);
             }
             dash_status.promo_enabled = config->promo.enabled;
             dash_status.reports_enabled = config->stream_report.enabled;
