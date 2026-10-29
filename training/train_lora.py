@@ -6,7 +6,7 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--model', default='Qwen/Qwen3-4B-Instruct-2507', help='Hugging Face base checkpoint; verify it matches the Ollama model family')
+    parser.add_argument('--model', required=True, help='Exact Hugging Face base checkpoint matching the installed Ollama weights; do not guess this value')
     parser.add_argument('--data-dir', type=Path, default=Path(__file__).resolve().parent / 'generated')
     parser.add_argument('--output-dir', type=Path, default=Path(__file__).resolve().parent / 'adapters' / 'apelsinbot-lora')
     parser.add_argument('--epochs', type=float, default=3.0)
@@ -34,6 +34,9 @@ def main():
     use_bf16 = bool(hasattr(torch.cuda, 'is_bf16_supported') and torch.cuda.is_bf16_supported())
     compute_dtype = torch.bfloat16 if use_bf16 else torch.float16
     quantization = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type='nf4', bnb_4bit_use_double_quant=True, bnb_4bit_compute_dtype=compute_dtype)
+    print('WARNING: LoRA must be trained on the exact base checkpoint used by the Ollama model.')
+    print('Selected Hugging Face checkpoint:', args.model)
+    print('If checkpoint identity is unverified, stop now; architecture name and parameter count alone are not enough.')
     print('Loading base model:', args.model)
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     if tokenizer.pad_token is None:
