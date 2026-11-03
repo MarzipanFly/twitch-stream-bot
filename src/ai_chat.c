@@ -462,8 +462,8 @@ static int ollama_generate(const char *model, const AiJob *job,
             goto cleanup;
         written = snprintf(payload + used, AI_PAYLOAD_CAPACITY - used,
                            "],\"options\":{\"num_predict\":160,"
-                           "\"num_ctx\":4096,\"temperature\":0.65,"
-                           "\"repeat_penalty\":1.15}}");
+                           "\"num_ctx\":4096,\"temperature\":0.72,"
+                           "\"repeat_penalty\":1.08}}");
         if (written < 0 || (size_t)written >= AI_PAYLOAD_CAPACITY - used)
             goto cleanup;
         used += (size_t)written;
