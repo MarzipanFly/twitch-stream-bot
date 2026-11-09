@@ -98,6 +98,7 @@ static ConfigSection parse_section(
     if (strcmp(line, "[obs]") == 0) return SECTION_OBS;
     if (strcmp(line, "[ai]") == 0) return SECTION_AI;
     if (strcmp(line, "[promo]") == 0) return SECTION_PROMO;
+    if (strcmp(line, "[raids]") == 0) return SECTION_RAIDS;
     if (strcmp(line, "[stream_report]") == 0) return SECTION_STREAM_REPORT;
     if (strcmp(line, "[dashboard]") == 0) return SECTION_DASHBOARD;
     if (strcmp(line, "[cooldowns]") == 0) return SECTION_COOLDOWNS;
@@ -551,6 +552,7 @@ BotResult config_load(
     config->promo.enabled = 1;
     config->promo.min_minutes = 5;
     config->promo.max_minutes = 10;
+    config->raids.auto_shoutout = 0;
     config->stream_report.enabled = 1;
     config->dashboard.enabled = 1;
     config->dashboard.port = 8765;
