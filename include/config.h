@@ -119,6 +119,12 @@ typedef struct
     unsigned int max_minutes;
 } PromoConfig;
 
+/* Native Twitch Shoutout after an inbound raid. */
+typedef struct
+{
+    int auto_shoutout;
+} RaidConfig;
+
 /* Automatic local stream report (no extra Twitch scopes required). */
 typedef struct
 {
