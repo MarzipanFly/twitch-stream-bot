@@ -1,0 +1,23 @@
+name: AI Manager tests
+
+on:
+  push:
+    branches:
+      - feature/apelsin-natural-conversation
+  pull_request:
+    paths:
+      - "include/ai_manager.h"
+      - "src/ai_manager.c"
+      - "tests/test_ai_manager.c"
+      - "twitchbot.pro"
+      - ".github/workflows/ai-manager.yml"
+
+jobs:
+  ai-manager:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile with warnings as errors
+        run: cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/test_ai_manager.c src/ai_manager.c -o test_ai_manager
+      - name: Run observe-only scenarios
+        run: ./test_ai_manager
