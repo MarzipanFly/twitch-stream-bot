@@ -560,7 +560,6 @@ BotResult config_load(
     config->promo.min_minutes = 5;
     config->promo.max_minutes = 10;
     config->raids.auto_shoutout = 0;
-    config->raids.auto_shoutout = 0;
     config->stream_report.enabled = 1;
     config->dashboard.enabled = 1;
     config->dashboard.port = 8765;
