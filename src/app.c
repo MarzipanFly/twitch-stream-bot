@@ -903,13 +903,15 @@ static BotResult ensure_twitch_auth(
             &config->twitch
         );
 
-
-    if (
-        result != BOT_OK)
-    {
+    if (result != BOT_OK)
         return result;
-    }
 
+    if (config->raids.auto_shoutout &&
+        !config->twitch.shoutout_scope_granted)
+    {
+        log_error("Twitch authorization completed without moderator:manage:shoutouts; automatic raid Shoutouts cannot start");
+        return BOT_ERR_AUTH;
+    }
 
     return BOT_OK;
 }
