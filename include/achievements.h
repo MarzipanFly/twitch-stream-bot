@@ -19,7 +19,8 @@ AchievementEventKind achievements_event_kind(const char *json);
 /* Persists rewards and raid counts before posting announcements. */
 BotResult achievements_process_event(const TwitchConfig *twitch,
                                      const char *json,
-                                     AchievementEventKind kind);
+                                     AchievementEventKind kind,
+                                     int auto_shoutout);
 
 /* Text for !достижения / !ачивки */
 void achievements_format(const ViewerProfile *profile,
