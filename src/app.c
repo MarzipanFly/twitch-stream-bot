@@ -4103,7 +4103,7 @@ static BotResult run_bot_loop(
                 if (dash_changes.raids && !config->twitch.shoutout_scope_granted)
                 {
                     snprintf(command_message, sizeof(command_message),
-                             "%s", "Для Shoutout нужна повторная OAuth-авторизация: включи auto_shoutout в config.ini и перезапусти бота");
+                             "%s", "Для первого включения останови бота, установи raids=1 в data/dashboard_controls.ini и запусти снова; подтверди OAuth-разрешение Twitch");
                     ++command_sequence;
                     log_warning("Dashboard could not enable raid Shoutout: OAuth scope is missing");
                 }
