@@ -1,7 +1,7 @@
 'use strict';
 const byId=id=>document.getElementById(id);
 const text=(id,v)=>{byId(id).textContent=v==null||v===''?'—':String(v)};
-let latest=null, pending=new Set(), toastTimeout=0, previousObsSeq=0, obsCommandPending=false;
+let latest=null, pending=new Set(), toastTimeout=0, previousObsSeq=0, obsCommandPending=false, previousCommandSeq=null;
 function toast(msg) {
  const el=byId('toast'); el.textContent=msg; el.classList.add('show');
  clearTimeout(toastTimeout);toastTimeout=setTimeout(()=>el.classList.remove('show'),4500);
@@ -15,6 +15,12 @@ async function refresh() {
   const response=await fetch('/api/status',{cache:'no-store'});
   if(!response.ok) throw Error('Сервер не отвечает: '+response.status);
   const d=await response.json();latest=d;
+  const commandSeq=Number(d.command_seq)||0;
+  if(previousCommandSeq===null) previousCommandSeq=commandSeq;
+  else if(commandSeq!==previousCommandSeq) {
+   previousCommandSeq=commandSeq;
+   if(d.command_result) toast(d.command_result);
+  }
   byId('service').textContent='● Подключено';byId('service').classList.add('connected');
   byId('liveTag').textContent=d.live?'● LIVE':'○ OFFLINE';
   byId('liveTag').classList.toggle('connected',Boolean(d.live));
