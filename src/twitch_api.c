@@ -523,6 +523,79 @@ BotResult twitch_search_category(
     return BOT_OK;
 }
 
+BotResult twitch_send_shoutout(
+    const TwitchConfig *config,
+    const char *to_broadcaster_id
+)
+{
+    wchar_t wide_client_id[1024];
+    wchar_t wide_access_token[2048];
+    wchar_t wide_from_id[128];
+    wchar_t wide_to_id[128];
+    wchar_t wide_moderator_id[128];
+    wchar_t headers[4096];
+    wchar_t path[2048];
+    HttpResponse response = {0};
+    BotResult result;
+
+    if (!config || !to_broadcaster_id || !to_broadcaster_id[0] ||
+        !config->client_id[0] || !config->access_token[0] ||
+        !config->broadcaster_id[0] || !config->bot_user_id[0])
+        return BOT_ERR_CONFIG;
+
+    if (strcmp(config->broadcaster_id, to_broadcaster_id) == 0)
+        return BOT_ERR_CONFIG;
+
+    if (!utf8_to_wide(config->client_id, wide_client_id,
+                      (int)(sizeof(wide_client_id) / sizeof(wide_client_id[0]))) ||
+        !utf8_to_wide(config->access_token, wide_access_token,
+                      (int)(sizeof(wide_access_token) / sizeof(wide_access_token[0]))) ||
+        !utf8_to_wide(config->broadcaster_id, wide_from_id,
+                      (int)(sizeof(wide_from_id) / sizeof(wide_from_id[0]))) ||
+        !utf8_to_wide(to_broadcaster_id, wide_to_id,
+                      (int)(sizeof(wide_to_id) / sizeof(wide_to_id[0]))) ||
+        !utf8_to_wide(config->bot_user_id, wide_moderator_id,
+                      (int)(sizeof(wide_moderator_id) / sizeof(wide_moderator_id[0]))))
+        return BOT_ERR_TWITCH;
+
+    swprintf(headers, sizeof(headers) / sizeof(headers[0]),
+             L"Authorization: Bearer %ls\r\n"
+             L"Client-Id: %ls\r\n",
+             wide_access_token, wide_client_id);
+    swprintf(path, sizeof(path) / sizeof(path[0]),
+             L"/helix/chat/shoutouts?from_broadcaster_id=%ls&to_broadcaster_id=%ls&moderator_id=%ls",
+             wide_from_id, wide_to_id, wide_moderator_id);
+
+    log_info("Sending Twitch Shoutout to broadcaster ID %s", to_broadcaster_id);
+    result = http_post(TWITCH_API_HOST, path, headers, NULL, &response);
+    if (result != BOT_OK)
+    {
+        http_response_free(&response);
+        return result;
+    }
+
+    if (response.status_code == 204)
+    {
+        http_response_free(&response);
+        log_info("Twitch Shoutout sent successfully");
+        return BOT_OK;
+    }
+
+    if (response.status_code == 401 || response.status_code == 403)
+    {
+        log_warning("Twitch Shoutout rejected: HTTP %lu (check moderator:manage:shoutouts scope and bot moderator role)",
+                    response.status_code);
+        http_response_free(&response);
+        return BOT_ERR_AUTH;
+    }
+
+    log_warning("Twitch Shoutout failed: HTTP %lu: %s",
+                response.status_code,
+                response.body ? response.body : "(empty response)");
+    http_response_free(&response);
+    return BOT_ERR_TWITCH;
+}
+
 BotResult twitch_update_channel_category(
     const TwitchConfig *config,
     const char *broadcaster_id,
