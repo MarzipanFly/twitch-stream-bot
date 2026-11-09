@@ -526,6 +526,7 @@ static BotResult validate_current_token(
  */
 static BotResult run_device_authorization(
     const TwitchConfig *config,
+    const char *scopes,
     TwitchAuthToken *token
 )
 {
@@ -546,8 +547,9 @@ static BotResult run_device_authorization(
 
 
     result =
-        twitch_auth_request_device_code(
+        twitch_auth_request_device_code_with_scopes(
             config,
+            scopes,
             &device
         );
 
@@ -617,9 +619,10 @@ static BotResult run_device_authorization(
 
 
         result =
-            twitch_auth_poll_token(
+            twitch_auth_poll_token_with_scopes(
                 config,
                 &device,
+                scopes,
                 token
             );
 
@@ -860,6 +863,9 @@ static BotResult ensure_twitch_auth(
     result =
         run_device_authorization(
             &config->twitch,
+            config->raids.auto_shoutout
+                ? "user:read:chat user:write:chat moderator:read:followers moderator:manage:shoutouts"
+                : "user:read:chat user:write:chat moderator:read:followers",
             &token
         );
 
