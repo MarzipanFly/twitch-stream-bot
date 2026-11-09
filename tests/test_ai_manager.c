@@ -33,5 +33,12 @@ int main(void) {
  memset(&e,0,sizeof(e));e.type=AI_MANAGER_EVENT_UNKNOWN;
  assert(!ai_manager_observe(&e,&d));assert(d.status==AI_MANAGER_DECISION_REJECTED);
  assert(d.proposed_action==AI_MANAGER_ACTION_NONE);
+ /* Reject fixed-size fields that are not NUL-terminated. */
+ memset(&e, 'x', sizeof(e));
+ e.type=AI_MANAGER_EVENT_RAID;
+ snprintf(e.actor_id,sizeof(e.actor_id),"id");
+ snprintf(e.actor_login,sizeof(e.actor_login),"login");
+ assert(!ai_manager_observe(&e,&d));
+ assert(d.status==AI_MANAGER_DECISION_REJECTED);
  puts("AI Manager observe-only tests passed");return 0;
 }
