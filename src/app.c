@@ -493,6 +493,14 @@ static BotResult validate_current_token(
         validation.user_id
     );
 
+    config->shoutout_scope_granted = 0;
+    {
+        size_t i;
+        for (i = 0; i < validation.scope_count; ++i)
+            if (strcmp(validation.scopes[i], "moderator:manage:shoutouts") == 0)
+                config->shoutout_scope_granted = 1;
+    }
+
 
     log_info(
         "Twitch chat bot account: %s (%s)",
@@ -730,6 +738,13 @@ static BotResult ensure_twitch_auth(
             );
 
 
+        if (result == BOT_OK && config->raids.auto_shoutout &&
+            !config->twitch.shoutout_scope_granted)
+        {
+            log_warning("Automatic raid Shoutouts are enabled but OAuth lacks moderator:manage:shoutouts; requesting authorization again");
+            result = BOT_ERR_AUTH;
+        }
+
         if (
             result == BOT_OK)
         {
@@ -796,6 +811,13 @@ static BotResult ensure_twitch_auth(
                         &config->twitch
                     );
 
+
+                if (result == BOT_OK && config->raids.auto_shoutout &&
+                    !config->twitch.shoutout_scope_granted)
+                {
+                    log_warning("Refreshed Twitch token still lacks moderator:manage:shoutouts; fresh authorization is required");
+                    result = BOT_ERR_AUTH;
+                }
 
                 if (
                     result == BOT_OK)
@@ -4330,7 +4352,8 @@ static BotResult run_bot_loop(
                         achievements_event_kind(json);
                     if (achievement_kind != ACHIEVEMENT_EVENT_NONE)
                         chat_result = achievements_process_event(
-                            &config->twitch, json, achievement_kind);
+                            &config->twitch, json, achievement_kind,
+                            config->raids.auto_shoutout);
                     else
                         chat_result = process_twitch_chat_notification(
                             config, json, &chat_event);
