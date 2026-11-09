@@ -25,6 +25,7 @@ SOURCES += \
     src/music_audio.c \
     src/music_worker.c \
     src/ai_chat.c \
+    src/ai_manager.c \
     src/ai_text.c \
     src/ai_retrieval.c \
     src/ai_game_scope.c \
@@ -74,6 +75,7 @@ HEADERS += \
     include/music_audio.h \
     include/music_worker.h \
     include/ai_chat.h \
+    include/ai_manager.h \
     include/ai_text.h \
     include/ai_retrieval.h \
     include/ai_game_scope.h \
