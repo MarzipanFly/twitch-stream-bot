@@ -16,6 +16,7 @@ typedef enum
     SECTION_OBS,
     SECTION_AI,
     SECTION_PROMO,
+    SECTION_RAIDS,
     SECTION_STREAM_REPORT,
     SECTION_DASHBOARD,
     SECTION_COOLDOWNS,
@@ -327,6 +328,12 @@ static void parse_key_value(
             }
             break;
 
+        case SECTION_RAIDS:
+            if (strcmp(key, "auto_shoutout") == 0)
+                config->raids.auto_shoutout =
+                    strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
+            break;
+
         case SECTION_STREAM_REPORT:
             if (strcmp(key, "enabled") == 0)
                 config->stream_report.enabled =
@@ -552,6 +559,7 @@ BotResult config_load(
     config->promo.enabled = 1;
     config->promo.min_minutes = 5;
     config->promo.max_minutes = 10;
+    config->raids.auto_shoutout = 0;
     config->raids.auto_shoutout = 0;
     config->stream_report.enabled = 1;
     config->dashboard.enabled = 1;
