@@ -4112,6 +4112,10 @@ static BotResult run_bot_loop(
                     config->raids.auto_shoutout = dash_changes.raids;
                     log_info("Dashboard: automatic raid Shoutout %s",
                              config->raids.auto_shoutout ? "ON" : "OFF");
+                    snprintf(command_message, sizeof(command_message),
+                             "Автоматический Shoutout после рейда %s",
+                             config->raids.auto_shoutout ? "включён" : "выключен");
+                    ++command_sequence;
                     changed = 1;
                 }
             }
