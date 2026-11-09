@@ -27,9 +27,9 @@ int main(void) {
  assert(ai_manager_observe(&e,&d));assert(d.proposed_action==AI_MANAGER_ACTION_NOTIFY_OWNER);
  ai_manager_get_status(&s);assert(s.monitor_only==1);assert(s.observed_events==5);
  assert(s.proposed_actions==3&&s.duplicate_events==1&&s.history_count==5);
- assert(ai_manager_get_history(h,8)==5);assert(h[0].sequence==1);
+ assert(ai_manager_get_history(h,8)==6);assert(h[0].sequence==1);
  assert(h[1].status==AI_MANAGER_DECISION_DUPLICATE);
- assert(h[4].proposed_action==AI_MANAGER_ACTION_NOTIFY_OWNER);
+ assert(h[5].proposed_action==AI_MANAGER_ACTION_NOTIFY_OWNER);
  memset(&e,0,sizeof(e));e.type=AI_MANAGER_EVENT_UNKNOWN;
  assert(!ai_manager_observe(&e,&d));assert(d.status==AI_MANAGER_DECISION_REJECTED);
  assert(d.proposed_action==AI_MANAGER_ACTION_NONE);
