@@ -17,6 +17,7 @@ typedef struct {
 typedef struct
 {
     int live, viewers, chat_connected, ai_enabled, promo_enabled;
+    int raid_shoutout_enabled;
     int reports_enabled, obs_enabled, peak_observed;
     unsigned int promo_min, promo_max;
     size_t queue_count, profile_count;
@@ -59,7 +60,7 @@ typedef struct
 
 typedef struct
 {
-    int ai, promo, reports; /* -1 = unchanged, 0 = disable, 1 = enable */
+    int ai, promo, reports, raids; /* -1 = unchanged, 0 = disable, 1 = enable */
     int obs_action;  /* 0: none; 1: scene, 2: start record, 3: stop record */
     char obs_scene[DASH_OBS_SCENE_LENGTH];
     int audio_action; /* 0 none, 1 set volume, 2 mute */
