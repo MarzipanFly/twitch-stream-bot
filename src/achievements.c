@@ -1,5 +1,6 @@
 #include "achievements.h"
 #include "twitch_chat.h"
+#include "twitch_api.h"
 #include "logger.h"
 #include "cJSON.h"
 
@@ -48,7 +49,8 @@ AchievementEventKind achievements_event_kind(const char *json)
 
 BotResult achievements_process_event(const TwitchConfig *twitch,
                                      const char *json,
-                                     AchievementEventKind kind)
+                                     AchievementEventKind kind,
+                                     int auto_shoutout)
 {
     cJSON *root;
     const cJSON *event;
@@ -160,6 +162,15 @@ BotResult achievements_process_event(const TwitchConfig *twitch,
                  login, viewers);
         log_info("Achievement raid from %s (viewers=%d, total=%lld)",
                  login, viewers, profile->raids_sent);
+        if (auto_shoutout)
+        {
+            BotResult shoutout_result = twitch_send_shoutout(twitch, id);
+            if (shoutout_result == BOT_OK)
+                log_info("Automatic Twitch Shoutout sent to raid channel %s", login);
+            else
+                log_warning("Automatic Twitch Shoutout failed for %s (result=%d); raid announcement will still be posted",
+                            login, (int)shoutout_result);
+        }
     }
 
     cJSON_Delete(root);
