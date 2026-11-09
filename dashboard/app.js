@@ -39,9 +39,9 @@ async function refresh() {
   renderObs(d);
   renderAudio(d);renderMusic(d);renderChart(d);
   text('updated','Обновлено '+new Date().toLocaleTimeString('ru-RU'));
-  for(const feature of ['ai','promo','reports']) {
+  for(const feature of ['ai','promo','reports','raids']) {
     if(pending.has(feature)) continue;
-    byId('toggle-'+feature).setAttribute('aria-checked',String(Boolean(d[feature])));
+    byId('toggle-'+feature).setAttribute('aria-checked',String(Boolean(feature==='raids'?d.raids:d[feature])));
   }
  } catch(e) {
   byId('service').textContent='● Нет связи';byId('service').classList.remove('connected');
@@ -219,6 +219,7 @@ byId('musicClear').addEventListener('click',()=>{
   command({action:'music',mode:'clear'});
 });
 byId('markMoment').addEventListener('click',()=>command({action:'moment'}));
+byId('toggle-raids').addEventListener('click',()=>toggle('raids'));
 
 async function toggle(feature) {
  if(pending.has(feature))return;
