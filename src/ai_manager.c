@@ -18,6 +18,9 @@ static void copy_text(char *d,size_t cap,const char *s) {
 static int valid_type(AiManagerEventType t) {
  return t>AI_MANAGER_EVENT_UNKNOWN && t<=AI_MANAGER_EVENT_COMPONENT_DEGRADED;
 }
+static int terminated(const char *s,size_t cap) {
+ return s && memchr(s,'\\0',cap)!=NULL;
+}
 static int seen(const char *id) {
  size_t i; if(!id||!id[0])return 0;
  for(i=0;i<g_manager.seen_count;++i)if(strcmp(g_manager.seen_ids[i],id)==0)return 1;
@@ -48,6 +51,11 @@ int ai_manager_observe(const AiManagerEvent *e,AiManagerDecision *out) {
  memset(d,0,sizeof(*d)); d->status=AI_MANAGER_DECISION_IGNORED;
  if(!g_manager.initialized)ai_manager_init(NULL);
  if(!e||!valid_type(e->type)){reject(d,"Invalid or unsupported event type.");save(d);return 0;}
+ if(!terminated(e->event_id,sizeof(e->event_id)) ||
+    !terminated(e->actor_id,sizeof(e->actor_id)) ||
+    !terminated(e->actor_login,sizeof(e->actor_login))) {
+  reject(d,"Event contains a non-terminated text field.");save(d);return 0;
+ }
  ++g_manager.observed_events; d->event_type=e->type; d->timestamp=e->timestamp;
  copy_text(d->actor_login,sizeof(d->actor_login),e->actor_login);
  if(e->event_id[0]&&seen(e->event_id)){
