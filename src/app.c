@@ -4097,6 +4097,14 @@ static BotResult run_bot_loop(
                          config->promo.enabled ? "ON" : "OFF");
                 changed = 1;
             }
+            if (dash_changes.raids != -1 &&
+                config->raids.auto_shoutout != dash_changes.raids)
+            {
+                config->raids.auto_shoutout = dash_changes.raids;
+                log_info("Dashboard: automatic raid Shoutout %s",
+                         config->raids.auto_shoutout ? "ON" : "OFF");
+                changed = 1;
+            }
             if (dash_changes.reports != -1 &&
                 config->stream_report.enabled != dash_changes.reports)
             {
@@ -4637,6 +4645,7 @@ static BotResult run_bot_loop(
             }
             dash_status.promo_enabled = config->promo.enabled;
             dash_status.reports_enabled = config->stream_report.enabled;
+            dash_status.raid_shoutout_enabled = config->raids.auto_shoutout;
             dash_status.obs_enabled = config->obs.enabled;
             dash_status.obs_config_enabled = config->obs.enabled;
             dash_status.category_sync_enabled = config->category_sync.enabled;
