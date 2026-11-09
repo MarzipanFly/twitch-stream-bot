@@ -133,7 +133,7 @@ BotResult twitch_auth_request_device_code_with_scopes(const TwitchConfig *config
 BotResult twitch_auth_request_device_code(const TwitchConfig *config, TwitchDeviceCode *device)
 {
     return twitch_auth_request_device_code_with_scopes(
-        config, "user:read:chat user:write:chat moderator:read:followers moderator:manage:shoutouts", device);
+        config, "user:read:chat user:write:chat moderator:read:followers", device);
 }
 
 BotResult twitch_auth_poll_token_with_scopes(const TwitchConfig *config, const TwitchDeviceCode *device, const char *scopes, TwitchAuthToken *token)
@@ -223,7 +223,7 @@ BotResult twitch_auth_poll_token_with_scopes(const TwitchConfig *config, const T
 BotResult twitch_auth_poll_token(const TwitchConfig *config, const TwitchDeviceCode *device, TwitchAuthToken *token)
 {
     return twitch_auth_poll_token_with_scopes(
-        config, device, "user:read:chat user:write:chat moderator:read:followers moderator:manage:shoutouts", token);
+        config, device, "user:read:chat user:write:chat moderator:read:followers", token);
 }
 
 BotResult twitch_auth_validate_token(const char *access_token, TwitchTokenValidation *validation)
