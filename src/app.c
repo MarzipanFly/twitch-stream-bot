@@ -4100,10 +4100,20 @@ static BotResult run_bot_loop(
             if (dash_changes.raids != -1 &&
                 config->raids.auto_shoutout != dash_changes.raids)
             {
-                config->raids.auto_shoutout = dash_changes.raids;
-                log_info("Dashboard: automatic raid Shoutout %s",
-                         config->raids.auto_shoutout ? "ON" : "OFF");
-                changed = 1;
+                if (dash_changes.raids && !config->twitch.shoutout_scope_granted)
+                {
+                    snprintf(command_message, sizeof(command_message),
+                             "%s", "Для Shoutout нужна повторная OAuth-авторизация: включи auto_shoutout в config.ini и перезапусти бота");
+                    ++command_sequence;
+                    log_warning("Dashboard could not enable raid Shoutout: OAuth scope is missing");
+                }
+                else
+                {
+                    config->raids.auto_shoutout = dash_changes.raids;
+                    log_info("Dashboard: automatic raid Shoutout %s",
+                             config->raids.auto_shoutout ? "ON" : "OFF");
+                    changed = 1;
+                }
             }
             if (dash_changes.reports != -1 &&
                 config->stream_report.enabled != dash_changes.reports)
