@@ -167,6 +167,7 @@ typedef struct
     ObsDirectorConfig obs_director;
     AiConfig ai;
     PromoConfig promo;
+    RaidConfig raids;
     StreamReportConfig stream_report;
     DashboardConfig dashboard;
     CooldownConfig cooldowns;
