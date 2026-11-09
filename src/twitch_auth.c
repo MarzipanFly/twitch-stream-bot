@@ -133,7 +133,7 @@ BotResult twitch_auth_request_device_code_with_scopes(const TwitchConfig *config
 BotResult twitch_auth_request_device_code(const TwitchConfig *config, TwitchDeviceCode *device)
 {
     return twitch_auth_request_device_code_with_scopes(
-        config, "user:read:chat user:write:chat moderator:read:followers", device);
+        config, "user:read:chat user:write:chat moderator:read:followers moderator:manage:shoutouts", device);
 }
 
 BotResult twitch_auth_poll_token_with_scopes(const TwitchConfig *config, const TwitchDeviceCode *device, const char *scopes, TwitchAuthToken *token)
