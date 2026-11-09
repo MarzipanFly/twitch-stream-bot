@@ -35,7 +35,7 @@ static DashboardServer g_dashboard;
 
 static void changes_reset(DashboardChanges *v)
 {
-    v->ai = v->promo = v->reports = -1;
+    v->ai = v->promo = v->reports = v->raids = -1;
     v->obs_action = 0;
     v->obs_scene[0] = '\0';
     v->audio_action=0;v->audio_input[0]='\0';
@@ -61,6 +61,8 @@ void dashboard_load_preferences(AppConfig *cfg)
             cfg->promo.enabled = x;
         if (sscanf(line, "reports=%d", &x) == 1 && (x == 0 || x == 1))
             cfg->stream_report.enabled = x;
+        if (sscanf(line, "raids=%d", &x) == 1 && (x == 0 || x == 1))
+            cfg->raids.auto_shoutout = x;
     }
     fclose(f);
     log_info("Local dashboard saved controls loaded");
@@ -72,9 +74,10 @@ int dashboard_save_preferences(const AppConfig *cfg)
     if (!cfg) return 0;
     f = fopen(DASHBOARD_PREFS_TMP, "wb");
     if (!f) return 0;
-    good = fprintf(f, "ai=%d\npromo=%d\nreports=%d\n",
+    good = fprintf(f, "ai=%d\npromo=%d\nreports=%d\nraids=%d\n",
                    cfg->ai.enabled != 0, cfg->promo.enabled != 0,
-                   cfg->stream_report.enabled != 0) > 0;
+                   cfg->stream_report.enabled != 0,
+                   cfg->raids.auto_shoutout != 0) > 0;
     if (fclose(f) != 0) good = 0;
     if (!good || !MoveFileExA(DASHBOARD_PREFS_TMP, DASHBOARD_PREFS,
                               MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
@@ -130,7 +133,7 @@ static int status_json(char *json, size_t capacity)
     LeaveCriticalSection(&g_dashboard.lock);
     len = snprintf(json, capacity,
         "{\"live\":%s,\"viewers\":%d,\"chat\":%s,"
-        "\"ai\":%s,\"promo\":%s,\"reports\":%s,\"obs\":%s,"
+        "\"ai\":%s,\"promo\":%s,\"reports\":%s,\"raids\":%s,\"obs\":%s,"
         "\"queue\":%u,\"profiles\":%u,\"peak\":%d,\"uptime\":%lu,"
         "\"promo_min\":%u,\"promo_max\":%u,\"obs_connected\":%s,"
         "\"obs_recording\":%d,\"obs_streaming\":%d,"
@@ -138,7 +141,9 @@ static int status_json(char *json, size_t capacity)
         "\"ai_test_seq\":%u,\"ai_test_pending\":%s,\"ai_test_turns\":%u,\"broadcaster\":",
         s.live ? "true" : "false", s.viewers, s.chat_connected ? "true" : "false",
         s.ai_enabled ? "true" : "false", s.promo_enabled ? "true" : "false",
-        s.reports_enabled ? "true" : "false", s.obs_enabled ? "true" : "false",
+        s.reports_enabled ? "true" : "false",
+        s.raid_shoutout_enabled ? "true" : "false",
+        s.obs_enabled ? "true" : "false",
         (unsigned int)s.queue_count, (unsigned int)s.profile_count,
         s.peak_observed, s.uptime_seconds, s.promo_min, s.promo_max,
         s.obs_state.connected ? "true" : "false",
@@ -577,6 +582,7 @@ static int queue_setting(const char *body)
     if (starts_with(body, "feature=ai&enabled=")) key = "ai";
     if (starts_with(body, "feature=promo&enabled=")) key = "promo";
     if (starts_with(body, "feature=reports&enabled=")) key = "reports";
+    if (starts_with(body, "feature=raids&enabled=")) key = "raids";
     if (!key) return 0;
     value = strstr(body, "&enabled=") + 9;
     if ((value[0] != '0' && value[0] != '1') || value[1] != '\0')
@@ -586,6 +592,7 @@ static int queue_setting(const char *body)
     if (!strcmp(key,"ai")) p->ai = on;
     if (!strcmp(key,"promo")) p->promo = on;
     if (!strcmp(key,"reports")) p->reports = on;
+    if (!strcmp(key,"raids")) p->raids = on;
     LeaveCriticalSection(&g_dashboard.lock);
     return 1;
 }
@@ -807,7 +814,8 @@ int dashboard_take_changes(DashboardChanges *changes)
     changes_reset(&g_dashboard.pending);
     LeaveCriticalSection(&g_dashboard.lock);
     pending = changes->ai != -1 || changes->promo != -1 ||
-              changes->reports != -1 || changes->obs_action != 0 ||
+              changes->reports != -1 || changes->raids != -1 ||
+              changes->obs_action != 0 ||
               changes->audio_action || changes->music_action ||
               changes->mark_moment || changes->settings_action ||
               changes->ai_test_action;
