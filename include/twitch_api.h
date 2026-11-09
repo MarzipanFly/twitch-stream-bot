@@ -26,6 +26,11 @@ BotResult twitch_search_category(
     size_t category_name_size
 );
 
+BotResult twitch_send_shoutout(
+    const TwitchConfig *config,
+    const char *to_broadcaster_id
+);
+
 BotResult twitch_update_channel_category(
     const TwitchConfig *config,
     const char *broadcaster_id,
