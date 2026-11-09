@@ -89,6 +89,12 @@ int main(void)
         "X-Apelsin-Local: 1\r\n"
         "Content-Type: application/x-www-form-urlencoded\r\n"
         "Content-Length: 13\r\n\r\naction=moment";
+    const char *raid_toggle =
+        "POST /api/control HTTP/1.1\r\n"
+        "Host: 127.0.0.1:18765\r\nOrigin: http://127.0.0.1:18765\r\n"
+        "X-Apelsin-Local: 1\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "Content-Length: 23\r\n\r\nfeature=raids&enabled=0";
     const char *bad_host =
         "GET /api/status HTTP/1.1\r\n"
         "Host: malicious.example\r\nConnection: close\r\n\r\n";
@@ -99,11 +105,13 @@ int main(void)
     config.ai.enabled=1;
     config.promo.enabled=1;
     config.stream_report.enabled=0;
+    config.raids.auto_shoutout=1;
     assert(dashboard_save_preferences(&config));
     memset(&config,0,sizeof(config));
     dashboard_load_preferences(&config);
     assert(config.ai.enabled==1 && config.promo.enabled==1);
     assert(config.stream_report.enabled==0);
+    assert(config.raids.auto_shoutout==1);
 
     assert(dashboard_start(1,18765));
     data.live=1;
@@ -112,6 +120,7 @@ int main(void)
     strcpy(data.broadcaster,"aleg_opelsin1");
     strcpy(data.title,"Играю с <друзьями> & веселюсь");
     data.obs_enabled=1;
+    data.raid_shoutout_enabled=1;
     data.obs_state.connected=1;
     data.obs_state.recording=1;
     data.obs_state.streaming=1;
@@ -146,6 +155,7 @@ int main(void)
     assert(strstr(buffer,"200 OK"));
     assert(strstr(buffer,"\"viewers\":8"));
     assert(strstr(buffer,"\"profiles\":17"));
+    assert(strstr(buffer,"\"raids\":true"));
     assert(!strstr(buffer,"access_token"));
     assert(strstr(buffer,"\"obs_connected\":true"));
     assert(strstr(buffer,"\"obs_recording\":1"));
@@ -174,6 +184,12 @@ int main(void)
     assert(strstr(buffer,"202 Accepted"));
     assert(dashboard_take_changes(&change));
     assert(change.reports==0 && change.ai==-1 && change.promo==-1);
+    assert(!dashboard_take_changes(&change));
+
+    request(raid_toggle,buffer,sizeof(buffer));
+    assert(strstr(buffer,"202 Accepted"));
+    assert(dashboard_take_changes(&change));
+    assert(change.raids==0 && change.ai==-1 && change.promo==-1);
     assert(!dashboard_take_changes(&change));
 
     request(scene_change,buffer,sizeof(buffer));
