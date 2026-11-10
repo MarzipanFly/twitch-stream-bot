@@ -3972,6 +3972,7 @@ static BotResult run_bot_loop(
     DashboardStatus dash_status = {0};
     DashboardChanges dash_changes;
     DashboardObs obs_state = {0};
+    char manager_last_obs_scene[DASH_OBS_SCENE_LENGTH] = "";
     CategorySync category_sync = {0};
     ObsDirector obs_director = {0};
     DWORD last_obs_poll = 0;
@@ -4729,6 +4730,22 @@ static BotResult run_bot_loop(
                 memset(&obs_state, 0, sizeof(obs_state));
                 obs_state.recording = -1;
                 obs_state.streaming = -1;
+            }
+            if (obs_state.connected && obs_state.scene[0])
+            {
+                if (manager_last_obs_scene[0] &&
+                    strcmp(manager_last_obs_scene, obs_state.scene) != 0)
+                {
+                    AiManagerEvent event = {0};
+                    AiManagerDecision decision;
+                    event.type = AI_MANAGER_EVENT_OBS_CHANGED;
+                    event.timestamp = (unsigned long long)time(NULL);
+                    (void)ai_manager_observe(&event, &decision);
+                    log_info("AI Manager monitor: OBS scene changed, proposal=%d",
+                             (int)decision.proposed_action);
+                }
+                snprintf(manager_last_obs_scene,
+                         sizeof(manager_last_obs_scene), "%s", obs_state.scene);
             }
             last_obs_poll = GetTickCount();
         }
