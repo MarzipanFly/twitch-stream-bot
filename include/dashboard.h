@@ -2,12 +2,14 @@
 #define DASHBOARD_H
 
 #include "config.h"
+#include "ai_manager.h"
 #include "dashboard_obs.h"
 #include "dashboard_stats.h"
 #include "music_queue.h"
 #include <stddef.h>
 
 #define DASHBOARD_LEADERS 5
+#define DASHBOARD_MANAGER_EVENTS 8
 typedef struct {
     char name[128];
     long long balance;
@@ -56,6 +58,9 @@ typedef struct
     char reports_history[1400];
     unsigned int command_seq;
     char command_result[200];
+    AiManagerStatus manager_status;
+    AiManagerDecision manager_history[DASHBOARD_MANAGER_EVENTS];
+    size_t manager_history_count;
 } DashboardStatus;
 
 typedef struct
