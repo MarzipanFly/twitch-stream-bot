@@ -59,6 +59,7 @@ typedef struct {
 /* Observe-only: this module never executes external actions. */
 void ai_manager_init(const AiManagerPolicy *policy);
 void ai_manager_reset(void);
+void ai_manager_set_policy(const AiManagerPolicy *policy);
 int ai_manager_observe(const AiManagerEvent *event, AiManagerDecision *decision);
 void ai_manager_get_status(AiManagerStatus *status);
 size_t ai_manager_get_history(AiManagerDecision *out, size_t capacity);
