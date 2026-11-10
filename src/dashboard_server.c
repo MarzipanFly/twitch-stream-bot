@@ -44,6 +44,7 @@ static void changes_reset(DashboardChanges *v)
     v->settings_action=0;
     v->settings_key[0]='\0';v->settings_value[0]='\0';
     v->ai_test_action=0;v->ai_test_message[0]='\0';
+    v->manager_demo_action=0;
 }
 void dashboard_load_preferences(AppConfig *cfg)
 {
@@ -524,6 +525,18 @@ static int queue_setting(const char *body)
         LeaveCriticalSection(&g_dashboard.lock);
         return 1;
     }
+    if(!strcmp(body, "action=manager_demo"))
+    {
+        EnterCriticalSection(&g_dashboard.lock);
+        if (p->manager_demo_action)
+        {
+            LeaveCriticalSection(&g_dashboard.lock);
+            return 0;
+        }
+        p->manager_demo_action=1;
+        LeaveCriticalSection(&g_dashboard.lock);
+        return 1;
+    }
     if(!strcmp(body, "action=ai_test_reset"))
     {
         EnterCriticalSection(&g_dashboard.lock);
@@ -851,6 +864,6 @@ int dashboard_take_changes(DashboardChanges *changes)
               changes->obs_action != 0 ||
               changes->audio_action || changes->music_action ||
               changes->mark_moment || changes->settings_action ||
-              changes->ai_test_action;
+              changes->ai_test_action || changes->manager_demo_action;
     return pending;
 }
