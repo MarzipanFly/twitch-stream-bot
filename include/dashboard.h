@@ -74,6 +74,7 @@ typedef struct
     double audio_volume;
     int music_action; /* 1 skip current; 2 clear upcoming */
     int mark_moment;
+    int manager_demo_action; /* 1 = observe synthetic raid; no live side effects */
     int ai_test_action;
     char ai_test_message[512];
     int settings_action;
