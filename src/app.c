@@ -29,6 +29,7 @@
 #include "music_queue.h"
 #include "music_worker.h"
 #include "ai_chat.h"
+#include "ai_manager.h"
 #include "chat_promo.h"
 #include "stream_report.h"
 #include "dashboard.h"
@@ -37,6 +38,7 @@
 #include "dashboard_stats.h"
 #include "achievements.h"
 #include "youtube_metadata.h"
+#include "cJSON.h"
 
 #include "token_store.h"
 
@@ -57,6 +59,78 @@ static int g_viewer_challenges_enabled = 0;
 static volatile LONG g_cohost_last_chat_tick = 0;
 static volatile LONG g_cohost_chat_sequence = 0;
 static volatile LONG g_live_ai_stream_online = 0;
+/* AI Manager is observe-only and owned by the main loop. */
+static void manager_update_policy(const AppConfig *config)
+{
+    AiManagerPolicy policy = {0};
+    if (!config) return;
+    policy.enable_raid_shoutout = config->raids.auto_shoutout;
+    policy.enable_stream_report = config->stream_report.enabled;
+    ai_manager_set_policy(&policy);
+}
+
+static void manager_observe_stream_transition(int started,
+                                              const TwitchStream *stream)
+{
+    AiManagerEvent event = {0};
+    AiManagerDecision decision;
+    event.type = started ? AI_MANAGER_EVENT_STREAM_STARTED :
+                           AI_MANAGER_EVENT_STREAM_ENDED;
+    event.timestamp = (unsigned long long)time(NULL);
+    event.stream_online = started;
+    if (stream) event.viewer_count = started ? stream->viewer_count : 0;
+    (void)ai_manager_observe(&event, &decision);
+    log_info("AI Manager monitor: stream %s, proposal=%d, status=%d",
+             started ? "started" : "ended",
+             (int)decision.proposed_action, (int)decision.status);
+}
+
+/* Only record an achievement after the original handler validated the channel. */
+static void manager_observe_achievement(const char *json,
+                                        AchievementEventKind kind,
+                                        const TwitchStream *stream)
+{
+    cJSON *root;
+    const cJSON *metadata, *payload, *item, *event_object;
+    const char *id, *login, *event_id;
+    AiManagerEvent observation = {0};
+    AiManagerDecision decision;
+    if (!json || kind == ACHIEVEMENT_EVENT_NONE) return;
+    root = cJSON_Parse(json);
+    if (!root) return;
+    metadata = cJSON_GetObjectItemCaseSensitive(root, "metadata");
+    payload = cJSON_GetObjectItemCaseSensitive(root, "payload");
+    event_object = cJSON_GetObjectItemCaseSensitive(payload, "event");
+    item = cJSON_GetObjectItemCaseSensitive(metadata, "message_id");
+    event_id = cJSON_IsString(item) ? item->valuestring : NULL;
+    item = cJSON_GetObjectItemCaseSensitive(event_object,
+          kind == ACHIEVEMENT_EVENT_RAID ? "from_broadcaster_user_id" : "user_id");
+    id = cJSON_IsString(item) ? item->valuestring : NULL;
+    item = cJSON_GetObjectItemCaseSensitive(event_object,
+          kind == ACHIEVEMENT_EVENT_RAID ? "from_broadcaster_user_login" : "user_login");
+    login = cJSON_IsString(item) ? item->valuestring : NULL;
+    if (!id || !id[0] || !login || !login[0])
+    {
+        cJSON_Delete(root);
+        return;
+    }
+    observation.type = kind == ACHIEVEMENT_EVENT_RAID ?
+                       AI_MANAGER_EVENT_RAID : AI_MANAGER_EVENT_FOLLOW;
+    snprintf(observation.actor_id, sizeof(observation.actor_id), "%s", id);
+    snprintf(observation.actor_login, sizeof(observation.actor_login), "%s", login);
+    if (event_id)
+        snprintf(observation.event_id, sizeof(observation.event_id), "%s", event_id);
+    observation.timestamp = (unsigned long long)time(NULL);
+    observation.stream_online = stream ? stream->is_live : 0;
+    observation.viewer_count = stream && stream->is_live ? stream->viewer_count : 0;
+    cJSON_Delete(root);
+    (void)ai_manager_observe(&observation, &decision);
+    log_info("AI Manager monitor: %s from %s, proposal=%d, status=%d",
+             kind == ACHIEVEMENT_EVENT_RAID ? "raid" : "follow",
+             observation.actor_login,
+             (int)decision.proposed_action, (int)decision.status);
+}
+
 
 static DWORD g_last_bruh_tick = 0;
 static int g_bruh_played = 0;
@@ -2327,6 +2401,30 @@ static BotResult process_twitch_chat_notification(
         strcmp(chat_message.chatter_user_id, config->twitch.bot_user_id) == 0)
         return BOT_OK;
 
+
+    /* Observe direct mentions without additional Twitch messages. */
+    if (chat_message.text[0] != config->bot.command_prefix &&
+        (strstr(chat_message.text, "Апельсин,") ||
+         strstr(chat_message.text, "апельсин,") ||
+         strstr(chat_message.text, "Апельсин?") ||
+         strstr(chat_message.text, "апельсин?") ||
+         strstr(chat_message.text, "ApelsinBot") ||
+         strstr(chat_message.text, "apelsinbot")))
+    {
+        AiManagerEvent event = {0};
+        AiManagerDecision decision;
+        event.type = AI_MANAGER_EVENT_CHAT;
+        event.direct_mention = 1;
+        event.timestamp = (unsigned long long)time(NULL);
+        snprintf(event.event_id, sizeof(event.event_id), "%s",
+                 chat_message.message_id);
+        snprintf(event.actor_id, sizeof(event.actor_id), "%s",
+                 chat_message.chatter_user_id);
+        snprintf(event.actor_login, sizeof(event.actor_login), "%s",
+                 chat_message.chatter_user_login);
+        (void)ai_manager_observe(&event, &decision);
+    }
+
     /* Only real viewer messages reset the cohost's quiet-period timer. */
     InterlockedExchange(&g_cohost_last_chat_tick, (LONG)GetTickCount());
     InterlockedIncrement(&g_cohost_chat_sequence);
@@ -3782,6 +3880,7 @@ static BotResult update_stream_state(
     if (*previous_live_state == 0 &&
         current_stream.is_live != 0)
     {
+        manager_observe_stream_transition(1, &current_stream);
         log_info(
             "========================================"
         );
@@ -3806,6 +3905,7 @@ static BotResult update_stream_state(
     else if (*previous_live_state != 0 &&
              current_stream.is_live == 0)
     {
+        manager_observe_stream_transition(0, &current_stream);
         log_info(
             "========================================"
         );
@@ -3908,6 +4008,10 @@ static BotResult run_bot_loop(
     }
 
     /* Uses a separate broadcaster token; the chat bot's OAuth session is untouched. */
+    ai_manager_init(NULL);
+    manager_update_policy(config);
+    log_info("AI Manager started in monitor-only mode");
+
     (void)category_sync_start(config, &category_sync);
     (void)obs_director_start(config, &obs_director);
 
@@ -4239,6 +4343,7 @@ static BotResult run_bot_loop(
                 ++command_sequence;
                 last_obs_poll=(DWORD)(GetTickCount()-15000UL);
             }
+            if (changed) manager_update_policy(config);
             if (changed && !dashboard_save_preferences(config))
                 log_warning("Dashboard controls applied, but could not save to data/");
         }
@@ -4381,9 +4486,14 @@ static BotResult run_bot_loop(
                     AchievementEventKind achievement_kind =
                         achievements_event_kind(json);
                     if (achievement_kind != ACHIEVEMENT_EVENT_NONE)
+                    {
                         chat_result = achievements_process_event(
                             &config->twitch, json, achievement_kind,
                             config->raids.auto_shoutout);
+                        if (chat_result == BOT_OK)
+                            manager_observe_achievement(
+                                json, achievement_kind, &dashboard_stream);
+                    }
                     else
                         chat_result = process_twitch_chat_notification(
                             config, json, &chat_event);
@@ -4660,6 +4770,10 @@ static BotResult run_bot_loop(
             dash_status.promo_enabled = config->promo.enabled;
             dash_status.reports_enabled = config->stream_report.enabled;
             dash_status.raid_shoutout_enabled = config->raids.auto_shoutout;
+            ai_manager_get_status(&dash_status.manager_status);
+            dash_status.manager_history_count =
+                ai_manager_get_history(dash_status.manager_history,
+                                       DASHBOARD_MANAGER_EVENTS);
             dash_status.obs_enabled = config->obs.enabled;
             dash_status.obs_config_enabled = config->obs.enabled;
             dash_status.category_sync_enabled = config->category_sync.enabled;
