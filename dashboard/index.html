@@ -160,6 +160,17 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
    <div id="musicList" class="list-body" style="margin-top:16px"></div>
   </article>
   <article class="panel">
+   <div class="section-head"><h2>AI Manager · журнал решений</h2><span class="minor" id="managerMode">Monitor Only</span></div>
+   <p class="note">Наблюдение без дополнительных сообщений и действий в Twitch или OBS. Предложения здесь не выполняются.</p>
+   <div class="info">
+    <div class="kv"><div class="k">Событий</div><div class="v" id="managerObserved">0</div></div>
+    <div class="kv"><div class="k">Предложений</div><div class="v" id="managerProposed">0</div></div>
+    <div class="kv"><div class="k">Дубликатов</div><div class="v" id="managerDuplicates">0</div></div>
+    <div class="kv"><div class="k">Отклонено</div><div class="v" id="managerRejected">0</div></div>
+   </div>
+   <div id="managerDecisions" class="list-body" style="margin-top:14px" aria-live="polite">Ожидаем события Twitch…</div>
+  </article>
+  <article class="panel">
    <div class="section-head"><h2>Быстрый доступ</h2><span class="minor">Данные на компьютере</span></div>
    <p class="no-data">Отчёты трансляций: <code>data/stream_reports/</code></p>
    <p class="no-data">Логи бота: <code>logs/bot.log</code></p>
