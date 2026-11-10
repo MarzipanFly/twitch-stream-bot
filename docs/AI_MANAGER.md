@@ -46,6 +46,11 @@ The local dashboard receives an `ai_manager` object through `GET /api/status`, c
 
 The dashboard renders actor logins and reasons via text nodes rather than HTML injection. The manager policy is refreshed after saved dashboard switches without clearing the journal.
 
+## Dashboard offline demonstration
+The AI Manager panel includes **Simulate raid**. The button submits a loopback-only `action=manager_demo` control request, which is applied by the main loop and creates a uniquely identified synthetic raid event with a demo actor. It never invokes Twitch APIs, never posts Shoutout, never changes OBS and never writes viewer profiles. The manager's current raid policy determines whether it marks the hypothetical Shoutout as proposed or ignored. This can be tested while the channel is offline.
+
+The test button adds events only to the in-memory journal, so a restart clears these observations. The dashboard's inactive viewer chart is intentionally compact until at least two samples are present.
+
 ## Next integration steps
 1. Verify Windows/MinGW full application build and dashboard JSON integration tests.
 2. Add a dry-run Action Dispatcher with centralized permissions.
