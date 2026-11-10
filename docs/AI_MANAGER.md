@@ -32,9 +32,23 @@ From the repository root:
 cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/test_ai_manager.c src/ai_manager.c -o test_ai_manager
 ./test_ai_manager
 
+## Runtime integration (added)
+The main bot loop initializes the manager in monitor-only mode and synchronizes its policy with the saved raid Shoutout and stream-report toggles. The manager receives:
+
+- validated incoming raid and follow EventSub notifications after the existing achievement handler has accepted the event;
+- direct bot mentions after the ordinary chat parser has accepted the message (ordinary chat is intentionally omitted to keep the bounded journal useful);
+- confirmed stream ONLINE/OFFLINE transitions (not the initial state at startup);
+- actual OBS scene changes observed by the dashboard's periodic OBS WebSocket status check (initial scene is a baseline).
+
+The manager does **not** control the existing Twitch, OBS or reporting handlers. Those handlers continue their existing behaviour; a proposal in the journal is not an action execution record. The manager's event ID duplicate filter only controls its own proposals and does not yet deduplicate existing production side effects.
+
+The local dashboard receives an `ai_manager` object through `GET /api/status`, containing `monitor_only`, `observed`, `proposed`, `duplicates`, `rejected`, and at most eight recent `decisions`. No chat content, OAuth token or OBS password is included. Counters and history reset when the bot restarts.
+
+The dashboard renders actor logins and reasons via text nodes rather than HTML injection. The manager policy is refreshed after saved dashboard switches without clearing the journal.
+
 ## Next integration steps
-1. Feed validated raid, follow, and chat EventSub events.
-2. Feed stream transitions and OBS health changes.
-3. Publish decision history and counters to the loopback dashboard.
-4. Add an Action Dispatcher in dry-run mode.
-5. Add explicit per-action execution permissions only after scenario tests pass.
+1. Verify Windows/MinGW full application build and dashboard JSON integration tests.
+2. Add a dry-run Action Dispatcher with centralized permissions.
+3. Implement durable EventSub idempotency for production actions.
+4. Add explicit per-action execution permissions and cooldown handling.
+5. Test reconnection, repeat deliveries and full-queue behaviours before any autonomous execution.
