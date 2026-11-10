@@ -4130,6 +4130,28 @@ static BotResult run_bot_loop(
         if (dashboard_running && dashboard_take_changes(&dash_changes))
         {
             int changed = 0;
+            if (dash_changes.manager_demo_action)
+            {
+                AiManagerEvent event = {0};
+                AiManagerDecision decision;
+                static unsigned int manager_demo_sequence = 0;
+                event.type = AI_MANAGER_EVENT_RAID;
+                snprintf(event.event_id, sizeof(event.event_id),
+                         "local-demo-%u", ++manager_demo_sequence);
+                snprintf(event.actor_id, sizeof(event.actor_id),
+                         "%s", "demo_raider");
+                snprintf(event.actor_login, sizeof(event.actor_login),
+                         "%s", "demo_raider");
+                event.timestamp = (unsigned long long)time(NULL);
+                /* Deliberately simulated context, never actual stream metrics. */
+                event.stream_online = 1;
+                event.viewer_count = 12;
+                (void)ai_manager_observe(&event, &decision);
+                snprintf(command_message, sizeof(command_message),
+                         "%s", "Тестовый рейд добавлен только в AI Manager");
+                ++command_sequence;
+                log_info("AI Manager dry-run demo event accepted (no Twitch or OBS action)");
+            }
             if (dash_changes.ai_test_action)
             {
                 int accepted = config->ai.enabled && ai_chat_running() &&
