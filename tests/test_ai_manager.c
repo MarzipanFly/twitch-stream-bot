@@ -40,5 +40,15 @@ int main(void) {
  snprintf(e.actor_login,sizeof(e.actor_login),"login");
  assert(!ai_manager_observe(&e,&d));
  assert(d.status==AI_MANAGER_DECISION_REJECTED);
+ /* Changing toggle policy must preserve history and suppress proposals. */
+ p.enable_raid_shoutout=0;
+ ai_manager_set_policy(&p);
+ e=raid("raid-3");
+ assert(ai_manager_observe(&e,&d));
+ assert(d.status==AI_MANAGER_DECISION_IGNORED);
+ assert(d.proposed_action==AI_MANAGER_ACTION_NONE);
+ ai_manager_get_status(&s);
+ assert(s.history_count>=7);
+ assert(s.monitor_only==1);
  puts("AI Manager observe-only tests passed");return 0;
 }
