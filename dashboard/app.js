@@ -243,7 +243,8 @@ function renderMusic(d) {
 function renderChart(d) {
  const values=Array.isArray(d.view_chart)?d.view_chart:[];
  const svg=byId('viewLine');
- if(values.length<2){svg.setAttribute('d','');text('chartSummary','Недостаточно замеров');}
+ svg.classList.toggle('chart-empty',values.length<2);
+ if(values.length<2){svg.setAttribute('d','');text('chartSummary',d.live?'Ожидаем следующий замер':'График появится во время трансляции');}
  else {
   const top=Math.max(1,...values);
   const pts=values.map((v,i)=>[(i*480/(values.length-1)+10),
@@ -260,6 +261,21 @@ byId('musicClear').addEventListener('click',()=>{
 });
 byId('markMoment').addEventListener('click',()=>command({action:'moment'}));
 byId('toggle-raids').addEventListener('click',()=>toggle('raids'));
+byId('managerDemoButton').addEventListener('click',async()=>{
+ const button=byId('managerDemoButton');
+ button.disabled=true;
+ try {
+  const response=await fetch('/api/control',{
+   method:'POST',
+   headers:{'Content-Type':'application/x-www-form-urlencoded','X-Apelsin-Local':'1'},
+   body:'action=manager_demo',cache:'no-store'
+  });
+  if(response.status!==202)throw Error('Тест отклонён ('+response.status+')');
+  toast('Тестовый рейд передан AI Manager · Twitch не затронут');
+  await refresh();
+ } catch(error){toast('Ошибка проверки: '+error.message);}
+ finally{button.disabled=false;}
+});
 
 async function toggle(feature) {
  if(pending.has(feature))return;
