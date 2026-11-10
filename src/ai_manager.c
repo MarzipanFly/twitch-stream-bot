@@ -19,7 +19,7 @@ static int valid_type(AiManagerEventType t) {
  return t>AI_MANAGER_EVENT_UNKNOWN && t<=AI_MANAGER_EVENT_COMPONENT_DEGRADED;
 }
 static int terminated(const char *s,size_t cap) {
- return s && memchr(s,'\\0',cap)!=NULL;
+ return s && memchr(s,'\0',cap)!=NULL;
 }
 static int seen(const char *id) {
  size_t i; if(!id||!id[0])return 0;
@@ -95,7 +95,9 @@ int ai_manager_observe(const AiManagerEvent *e,AiManagerDecision *out) {
  save(d); return d->status!=AI_MANAGER_DECISION_REJECTED;
 }
 void ai_manager_get_status(AiManagerStatus *s) {
- if(!s)return; memset(s,0,sizeof(*s)); s->observed_events=g_manager.observed_events;
+ if (!s) return;
+ memset(s, 0, sizeof(*s));
+ s->observed_events = g_manager.observed_events;
  s->proposed_actions=g_manager.proposed_actions;s->duplicate_events=g_manager.duplicate_events;
  s->rejected_events=g_manager.rejected_events;s->history_count=g_manager.history_count;
  s->last_sequence=g_manager.sequence;s->monitor_only=1;
