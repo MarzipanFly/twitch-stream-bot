@@ -287,7 +287,40 @@ static int status_json(char *json, size_t capacity)
                  s.sounds[i].cost,s.sounds[i].cooldown_seconds);
         if(!json_append(json,capacity,&n,value))return 0;
     }
-    return json_append(json,capacity,&n,"]}");
+    if (!json_append(json,capacity,&n,"],\"ai_manager\":{"))
+        return 0;
+    {
+        char value[320];
+        int written = snprintf(value, sizeof(value),
+            "\"monitor_only\":%s,\"observed\":%u,"
+            "\"proposed\":%u,\"duplicates\":%u,"
+            "\"rejected\":%u,\"decisions\":[",
+            s.manager_status.monitor_only ? "true" : "false",
+            (unsigned int)s.manager_status.observed_events,
+            (unsigned int)s.manager_status.proposed_actions,
+            (unsigned int)s.manager_status.duplicate_events,
+            (unsigned int)s.manager_status.rejected_events);
+        if (written < 0 || (size_t)written >= sizeof(value) ||
+            !json_append(json,capacity,&n,value)) return 0;
+    }
+    for (i=0;i<s.manager_history_count && i<DASHBOARD_MANAGER_EVENTS;++i)
+    {
+        const AiManagerDecision *d = &s.manager_history[i];
+        char value[240];
+        int written = snprintf(value,sizeof(value),
+            "%s{\"sequence\":%llu,\"event\":%d,"
+            "\"action\":%d,\"status\":%d,\"time\":%llu,"
+            "\"actor\":",
+            i ? "," : "", d->sequence, (int)d->event_type,
+            (int)d->proposed_action, (int)d->status, d->timestamp);
+        if (written < 0 || (size_t)written >= sizeof(value) ||
+            !json_append(json,capacity,&n,value) ||
+            !json_quote(json,capacity,&n,d->actor_login) ||
+            !json_append(json,capacity,&n,",\"reason\":") ||
+            !json_quote(json,capacity,&n,d->reason) ||
+            !json_append(json,capacity,&n,"}")) return 0;
+    }
+    return json_append(json,capacity,&n,"]}}");
 }
 
 static int starts_with(const char *data, const char *prefix)
