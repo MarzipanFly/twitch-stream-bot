@@ -89,6 +89,12 @@ int main(void)
         "X-Apelsin-Local: 1\r\n"
         "Content-Type: application/x-www-form-urlencoded\r\n"
         "Content-Length: 13\r\n\r\naction=moment";
+    const char *manager_demo =
+        "POST /api/control HTTP/1.1\r\n"
+        "Host: 127.0.0.1:18765\r\nOrigin: http://127.0.0.1:18765\r\n"
+        "X-Apelsin-Local: 1\r\n"
+        "Content-Type: application/x-www-form-urlencoded\r\n"
+        "Content-Length: 19\r\n\r\naction=manager_demo";
     const char *raid_toggle =
         "POST /api/control HTTP/1.1\r\n"
         "Host: 127.0.0.1:18765\r\nOrigin: http://127.0.0.1:18765\r\n"
@@ -208,6 +214,12 @@ int main(void)
     assert(strstr(buffer,"202 Accepted"));
     assert(dashboard_take_changes(&change));
     assert(change.raids==0 && change.ai==-1 && change.promo==-1);
+    assert(!dashboard_take_changes(&change));
+
+    request(manager_demo,buffer,sizeof(buffer));
+    assert(strstr(buffer,"202 Accepted"));
+    assert(dashboard_take_changes(&change));
+    assert(change.manager_demo_action==1);
     assert(!dashboard_take_changes(&change));
 
     request(scene_change,buffer,sizeof(buffer));
