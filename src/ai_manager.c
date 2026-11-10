@@ -46,6 +46,11 @@ void ai_manager_init(const AiManagerPolicy *p) {
  memset(&g_manager,0,sizeof(g_manager)); if(p)g_manager.policy=*p; g_manager.initialized=1;
 }
 void ai_manager_reset(void) { memset(&g_manager,0,sizeof(g_manager)); }
+void ai_manager_set_policy(const AiManagerPolicy *policy) {
+ if (!g_manager.initialized) ai_manager_init(NULL);
+ if (policy) g_manager.policy = *policy;
+}
+
 int ai_manager_observe(const AiManagerEvent *e,AiManagerDecision *out) {
  AiManagerDecision local; AiManagerDecision *d=out?out:&local;
  memset(d,0,sizeof(*d)); d->status=AI_MANAGER_DECISION_IGNORED;
