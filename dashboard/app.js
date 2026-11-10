@@ -43,7 +43,7 @@ async function refresh() {
   text('obs',!d.obs?'Выключен в настройках':d.obs_connected?'OBS подключён':'OBS недоступен');
   text('promoPeriod',d.promo_min+'–'+d.promo_max+' мин');
   renderObs(d);
-  renderAudio(d);renderMusic(d);renderChart(d);
+  renderAudio(d);renderMusic(d);renderChart(d);renderManager(d.ai_manager);
   text('updated','Обновлено '+new Date().toLocaleTimeString('ru-RU'));
   for(const feature of ['ai','promo','reports','raids']) {
     if(pending.has(feature)) continue;
@@ -52,6 +52,40 @@ async function refresh() {
  } catch(e) {
   byId('service').textContent='● Нет связи';byId('service').classList.remove('connected');
   text('updated','Нет связи с программой');
+ }
+}
+const managerEventNames={
+ 1:'Обращение к боту',2:'Рейд',3:'Подписка на канал',4:'Платная подписка',
+ 5:'Начало стрима',6:'Окончание стрима',7:'Сцена OBS',8:'Ошибка сервиса'
+};
+const managerActionNames={
+ 0:'Без действия',1:'Ответ ИИ',2:'Shoutout',3:'Приветствие',
+ 4:'Отчёт об эфире',5:'Уведомление владельца',6:'Смена сцены OBS'
+};
+const managerDecisionNames={0:'Наблюдение',1:'Предложено',2:'Дубликат',3:'Отклонено'};
+function renderManager(manager) {
+ const m=manager||{};
+ text('managerMode',m.monitor_only===true?'Monitor Only':'Нет данных');
+ text('managerObserved',Number(m.observed)||0);
+ text('managerProposed',Number(m.proposed)||0);
+ text('managerDuplicates',Number(m.duplicates)||0);
+ text('managerRejected',Number(m.rejected)||0);
+ const root=byId('managerDecisions');
+ const rows=Array.isArray(m.decisions)?m.decisions.slice().reverse():[];
+ root.replaceChildren();
+ if(!rows.length){root.textContent='Решений пока нет. Ожидаем события Twitch…';return;}
+ for(const d of rows) {
+  const line=document.createElement('div');line.className='small-row';
+  const box=document.createElement('div');box.style.minWidth='0';box.style.flex='1';
+  const header=document.createElement('div');header.className='small-name';
+  const when=Number(d.time)>0?new Date(Number(d.time)*1000).toLocaleTimeString('ru-RU'):'—';
+  header.textContent=(managerEventNames[d.event]||'Событие')+
+    (d.actor?' · '+d.actor:'')+' · '+when;
+  const detail=document.createElement('div');detail.className='tiny';
+  detail.textContent=(managerDecisionNames[d.status]||'Неизвестно')+
+   ' · '+(managerActionNames[d.action]||'Без действия')+
+   (d.reason?' · '+d.reason:'');
+  box.append(header,detail);line.append(box);root.append(line);
  }
 }
 function renderLeaderboard(people) {
