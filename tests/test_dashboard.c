@@ -121,6 +121,17 @@ int main(void)
     strcpy(data.title,"Играю с <друзьями> & веселюсь");
     data.obs_enabled=1;
     data.raid_shoutout_enabled=1;
+    data.manager_status.monitor_only=1;
+    data.manager_status.observed_events=3;
+    data.manager_status.proposed_actions=1;
+    data.manager_history_count=1;
+    data.manager_history[0].sequence=3;
+    data.manager_history[0].event_type=AI_MANAGER_EVENT_RAID;
+    data.manager_history[0].proposed_action=AI_MANAGER_ACTION_SHOUTOUT;
+    data.manager_history[0].status=AI_MANAGER_DECISION_PROPOSED;
+    strcpy(data.manager_history[0].actor_login,"raider<test>");
+    strcpy(data.manager_history[0].reason,"Proposed Shoutout");
+
     data.obs_state.connected=1;
     data.obs_state.recording=1;
     data.obs_state.streaming=1;
@@ -156,6 +167,13 @@ int main(void)
     assert(strstr(buffer,"\"viewers\":8"));
     assert(strstr(buffer,"\"profiles\":17"));
     assert(strstr(buffer,"\"raids\":true"));
+    assert(strstr(buffer,"\"ai_manager\":{"));
+    assert(strstr(buffer,"\"monitor_only\":true"));
+    assert(strstr(buffer,"\"observed\":3"));
+    assert(strstr(buffer,"\"proposed\":1"));
+    assert(strstr(buffer,"\"decisions\":[{"));
+    assert(strstr(buffer,"raider<test>"));
+    assert(strstr(buffer,"Proposed Shoutout"));
     assert(!strstr(buffer,"access_token"));
     assert(strstr(buffer,"\"obs_connected\":true"));
     assert(strstr(buffer,"\"obs_recording\":1"));
