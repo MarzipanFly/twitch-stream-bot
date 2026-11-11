@@ -7,8 +7,11 @@ on:
   pull_request:
     paths:
       - "include/ai_manager.h"
+      - "include/ai_action.h"
       - "src/ai_manager.c"
+      - "src/ai_action.c"
       - "tests/test_ai_manager.c"
+      - "tests/test_ai_action.c"
       - "twitchbot.pro"
       - ".github/workflows/ai-manager.yml"
 
@@ -21,3 +24,7 @@ jobs:
         run: cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/test_ai_manager.c src/ai_manager.c -o test_ai_manager
       - name: Run observe-only scenarios
         run: ./test_ai_manager
+      - name: Compile Action Dispatcher with warnings as errors
+        run: cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/test_ai_action.c src/ai_action.c -o test_ai_action
+      - name: Run Action Dispatcher dry-run guards
+        run: ./test_ai_action
