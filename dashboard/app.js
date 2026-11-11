@@ -63,6 +63,13 @@ const managerActionNames={
  4:'Отчёт об эфире',5:'Уведомление владельца',6:'Смена сцены OBS'
 };
 const managerDecisionNames={0:'Наблюдение',1:'Предложено',2:'Дубликат',3:'Отклонено'};
+const managerPreviewNames={0:'Действие не требуется',1:'Условия выполнены',2:'Заблокировано'};
+const managerGuardNames={
+ 0:'нет ограничений',1:'некорректное решение',2:'действие ещё не поддерживается',
+ 3:'функция отключена',4:'трансляция офлайн',5:'нет OAuth-разрешения',
+ 6:'действует cooldown',7:'сервис недоступен',
+ 8:'права или cooldown не подтверждены'
+};
 function renderManager(manager) {
  const m=manager||{};
  text('managerMode',m.monitor_only===true?'Monitor Only':'Нет данных');
@@ -70,6 +77,8 @@ function renderManager(manager) {
  text('managerProposed',Number(m.proposed)||0);
  text('managerDuplicates',Number(m.duplicates)||0);
  text('managerRejected',Number(m.rejected)||0);
+ text('managerAllowed',Number(m.preview_allowed)||0);
+ text('managerBlocked',Number(m.preview_blocked)||0);
  const root=byId('managerDecisions');
  const rows=Array.isArray(m.decisions)?m.decisions.slice().reverse():[];
  root.replaceChildren();
@@ -85,7 +94,13 @@ function renderManager(manager) {
   detail.textContent=(managerDecisionNames[d.status]||'Неизвестно')+
    ' · '+(managerActionNames[d.action]||'Без действия')+
    (d.reason?' · '+d.reason:'');
-  box.append(header,detail);line.append(box);root.append(line);
+  const preview=document.createElement('div');preview.className='tiny';
+  preview.style.marginTop='4px';
+  preview.textContent='Dry Run (текущее состояние): '+
+   (managerPreviewNames[d.preview]||'Нет данных')+
+   (Number(d.preview)===2?' · '+(managerGuardNames[d.guard]||'неизвестная причина'):'')+
+   ' · не выполнено';
+  box.append(header,detail,preview);line.append(box);root.append(line);
  }
 }
 function renderLeaderboard(people) {
