@@ -88,6 +88,31 @@ gcc -std=c11 -Wall -Wextra -Werror -Iinclude \
 ./test_ai_action
 ```
 
+## Runtime dry-run integration
+
+The main loop now evaluates each of the eight most recent AI Manager decisions
+with the **current**, trusted application snapshot using `ai_action_preview()`.
+The status JSON includes `preview_allowed` and `preview_blocked` counters and
+per-decision `preview`, `guard` and `executed` fields. The dashboard renders
+the result in Russian.
+
+Previews are **not historical outcomes**: they are recomputed on every status
+publication, so changing a toggle or going online can change the displayed
+assessment of an older proposal. A preview never calls Twitch/OBS or executes
+the proposed action. The existing Shoutout handler is separate.
+
+A Shoutout is never marked permissible unless the role and both global and
+per-channel cooldowns are verified. Twitch OAuth scope is known locally, but
+moderator status and durable per-target cooldown history are not yet verified,
+so the current implementation fails closed with an explicit 'unverified'
+reason. A simulated raid while offline is blocked as 'offline', even if its
+synthetic event represents an online stream.
+
+Before a real autonomous executor can be enabled, it needs role verification,
+a durable action ledger, atomic idempotency and cooldown reservations, and
+real stream-state checks at execution time. Do not treat a dry-run 'allowed'
+as authorization for a later external API call.
+
 ## Next integration steps
 1. Verify Windows/MinGW full application build and dashboard JSON integration tests.
 2. Add a dry-run Action Dispatcher with centralized permissions.
