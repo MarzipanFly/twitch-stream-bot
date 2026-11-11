@@ -3,6 +3,7 @@
 
 #include "config.h"
 #include "ai_manager.h"
+#include "ai_action.h"
 #include "dashboard_obs.h"
 #include "dashboard_stats.h"
 #include "music_queue.h"
@@ -60,7 +61,10 @@ typedef struct
     char command_result[200];
     AiManagerStatus manager_status;
     AiManagerDecision manager_history[DASHBOARD_MANAGER_EVENTS];
+    AiActionPreview manager_previews[DASHBOARD_MANAGER_EVENTS];
     size_t manager_history_count;
+    unsigned int manager_preview_allowed;
+    unsigned int manager_preview_blocked;
 } DashboardStatus;
 
 typedef struct
