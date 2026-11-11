@@ -63,9 +63,12 @@ void ai_action_preview(const AiManagerDecision *decision,
                 result->reason = AI_ACTION_GUARD_DISABLED;
             else if (!context->stream_online)
                 result->reason = AI_ACTION_GUARD_OFFLINE;
-            else if (!context->shoutout_scope_granted ||
-                     !context->moderator_authorized)
+            else if (!context->shoutout_scope_granted)
                 result->reason = AI_ACTION_GUARD_PERMISSION;
+            else if (!context->moderator_authorized ||
+                     !context->global_cooldown_known ||
+                     !context->target_cooldown_known)
+                result->reason = AI_ACTION_GUARD_UNVERIFIED;
             else if (in_cooldown(context->now_seconds,
                                  context->last_global_shoutout_seconds, 120) ||
                      in_cooldown(context->now_seconds,
