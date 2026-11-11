@@ -89,6 +89,10 @@ def check_answer(case, answer, previous):
                "проверь рецепт в jei/emi")
     if any(word in lowered for word in generic):
         warnings.append("generic_or_offtopic_template")
+    canned = ("вот это поворот", "главное — получать удовольствие",
+              "следующий раз обязательно получится")
+    if any(phrase in lowered for phrase in canned):
+        warnings.append("canned_conversational_phrase")
     return warnings
 
 
@@ -99,6 +103,8 @@ def main():
     parser.add_argument("--limit", type=int, default=10,
                         help="number of scenarios (default 10; 0 means all)")
     parser.add_argument("--timeout", type=float, default=90.0)
+    parser.add_argument("--prefix", default="",
+                        help="run only scenario IDs with this prefix, e.g. persona_")
     parser.add_argument("--list", action="store_true", help="show cases only")
     parser.add_argument("--output", type=Path, help="optional JSON report path")
     args = parser.parse_args()
@@ -108,6 +114,10 @@ def main():
         parser.error("Only local http://127.0.0.1:<port> is allowed")
     base = args.url.rstrip("/")
     cases = read_cases(args.cases)
+    if args.prefix:
+        cases = [case for case in cases if case["id"].startswith(args.prefix)]
+        if not cases:
+            parser.error("No evaluation cases start with: " + args.prefix)
     if args.limit > 0:
         cases = cases[:args.limit]
     if args.list:
