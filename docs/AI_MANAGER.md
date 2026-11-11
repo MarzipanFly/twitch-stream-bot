@@ -51,6 +51,43 @@ The AI Manager panel includes **Simulate raid**. The button submits a loopback-o
 
 The test button adds events only to the in-memory journal, so a restart clears these observations. The dashboard's inactive viewer chart is intentionally compact until at least two samples are present.
 
+## Action Dispatcher V1 — Dry Run (added)
+
+The new `include/ai_action.h` and `src/ai_action.c` expose `ai_action_preview()`.
+The API accepts a proposed `AiManagerDecision` plus **trusted, caller-supplied**
+`AiActionContext` and returns one of `ALLOWED`, `BLOCKED` or `NO_ACTION`,
+along with an explicit guard reason.
+
+**No side effects are possible through this API.** An `ALLOWED` result is only
+a hypothetical permission assessment; `executed` is always zero, and no
+Twitch/OBS/Ollama calls are performed.
+
+Validation covers:
+- match between event and action (a chat event cannot trigger Shoutout);
+- feature toggle;
+- confirmed stream-online status;
+- OAuth scope and authorization of the bot account;
+- 120-second global and 3600-second per-channel Shoutout cooldown snapshots;
+- available AI service for replies;
+- fail-closed behavior for OBS scene changes and other actions that lack
+  dedicated production permissions.
+
+**Limitations:** The current launcher does not yet feed live decisions to this
+preview API. No UI switch is added for execution because an execution engine
+does not exist. Caller-provided cooldown timestamps are only a snapshot:
+production will need a durable ledger and an atomic cooldown reservation
+before the action can be executed. The legacy Shoutout automation runs through
+its existing handler; this preview does not protect or replace that path yet.
+
+The portable test `tests/test_ai_action.c` is included in GitHub Actions and
+can be run from the repository root:
+
+```sh
+gcc -std=c11 -Wall -Wextra -Werror -Iinclude \
+    tests/test_ai_action.c src/ai_action.c -o test_ai_action
+./test_ai_action
+```
+
 ## Next integration steps
 1. Verify Windows/MinGW full application build and dashboard JSON integration tests.
 2. Add a dry-run Action Dispatcher with centralized permissions.
