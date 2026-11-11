@@ -93,10 +93,12 @@ h1{font-size:23px;letter-spacing:-.7px;margin:0;font-weight:750}.sub{font-size:1
     <div class="kv"><div class="k">Предложений</div><div class="v" id="managerProposed">0</div></div>
     <div class="kv"><div class="k">Дубликатов</div><div class="v" id="managerDuplicates">0</div></div>
     <div class="kv"><div class="k">Отклонено</div><div class="v" id="managerRejected">0</div></div>
+    <div class="kv"><div class="k">Dry Run · допустимо</div><div class="v" id="managerAllowed">0</div></div>
+    <div class="kv"><div class="k">Dry Run · заблокировано</div><div class="v" id="managerBlocked">0</div></div>
    </div>
    <div id="managerDecisions" class="list-body" style="margin-top:14px" aria-live="polite">Ожидаем события Twitch…</div>
    <div class="actions"><button id="managerDemoButton" class="action-btn ghost" type="button">Симулировать рейд</button></div>
-   <p class="note">Тест добавляет только запись в журнал. Twitch, Shoutout и OBS не затрагиваются.</p>
+   <p class="note">Dry Run сверяет решения с текущими настройками, эфиром и доступными подтверждениями прав. Непроверенные cooldown и права модератора блокируются. Это предварительная оценка, а не выполнение действия. Симуляция не затрагивает Twitch, Shoutout или OBS.</p>
   </article>
   <article class="panel">
    <div class="section-head"><h2>Музыкальный пульт</h2><span class="minor">Треки зрителей</span></div>
