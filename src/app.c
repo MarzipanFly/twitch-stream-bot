@@ -30,6 +30,7 @@
 #include "music_worker.h"
 #include "ai_chat.h"
 #include "ai_manager.h"
+#include "ai_action.h"
 #include "chat_promo.h"
 #include "stream_report.h"
 #include "dashboard.h"
@@ -4813,6 +4814,42 @@ static BotResult run_bot_loop(
             dash_status.manager_history_count =
                 ai_manager_get_history(dash_status.manager_history,
                                        DASHBOARD_MANAGER_EVENTS);
+            /* Dry-run previews use a trusted CURRENT application snapshot.
+             * No unverified role or cooldown state is ever treated as granted.
+             * This is not historical execution telemetry. */
+            {
+                AiActionContext guard = {0};
+                size_t manager_index;
+                guard.stream_online = dashboard_stream.is_live;
+                guard.shoutout_enabled = config->raids.auto_shoutout;
+                guard.shoutout_scope_granted =
+                    config->twitch.shoutout_scope_granted;
+                guard.moderator_authorized =
+                    config->twitch.bot_user_id[0] &&
+                    strcmp(config->twitch.bot_user_id,
+                           config->twitch.broadcaster_id) == 0;
+                /* Twitch moderator role and per-target cooldown are not
+                 * verified yet; keep both cooldown flags false. */
+                guard.ai_enabled = config->ai.enabled;
+                guard.obs_available = obs_state.connected;
+                guard.now_seconds = (unsigned long long)time(NULL);
+                dash_status.manager_preview_allowed = 0;
+                dash_status.manager_preview_blocked = 0;
+                for (manager_index = 0;
+                     manager_index < dash_status.manager_history_count;
+                     ++manager_index)
+                {
+                    AiActionPreview *preview =
+                        &dash_status.manager_previews[manager_index];
+                    ai_action_preview(
+                        &dash_status.manager_history[manager_index],
+                        &guard, preview);
+                    if (preview->status == AI_ACTION_PREVIEW_ALLOWED)
+                        ++dash_status.manager_preview_allowed;
+                    else if (preview->status == AI_ACTION_PREVIEW_BLOCKED)
+                        ++dash_status.manager_preview_blocked;
+                }
+            }
             dash_status.obs_enabled = config->obs.enabled;
             dash_status.obs_config_enabled = config->obs.enabled;
             dash_status.category_sync_enabled = config->category_sync.enabled;
