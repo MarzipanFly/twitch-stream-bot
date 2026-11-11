@@ -13,7 +13,9 @@ typedef struct
     int stream_online;
     int shoutout_enabled;
     int shoutout_scope_granted;
-    int moderator_authorized;
+    int moderator_authorized; /* true only if verified */
+    int global_cooldown_known;
+    int target_cooldown_known;
     int ai_enabled;
     int obs_available;
     unsigned long long now_seconds;
@@ -37,7 +39,8 @@ typedef enum
     AI_ACTION_GUARD_OFFLINE,
     AI_ACTION_GUARD_PERMISSION,
     AI_ACTION_GUARD_COOLDOWN,
-    AI_ACTION_GUARD_UNAVAILABLE
+    AI_ACTION_GUARD_UNAVAILABLE,
+    AI_ACTION_GUARD_UNVERIFIED
 } AiActionGuardReason;
 
 typedef struct
