@@ -295,18 +295,21 @@ static int status_json(char *json, size_t capacity)
         int written = snprintf(value, sizeof(value),
             "\"monitor_only\":%s,\"observed\":%u,"
             "\"proposed\":%u,\"duplicates\":%u,"
-            "\"rejected\":%u,\"decisions\":[",
+            "\"rejected\":%u,\"preview_allowed\":%u,"
+            "\"preview_blocked\":%u,\"decisions\":[",
             s.manager_status.monitor_only ? "true" : "false",
             (unsigned int)s.manager_status.observed_events,
             (unsigned int)s.manager_status.proposed_actions,
             (unsigned int)s.manager_status.duplicate_events,
-            (unsigned int)s.manager_status.rejected_events);
+            (unsigned int)s.manager_status.rejected_events,
+            s.manager_preview_allowed, s.manager_preview_blocked);
         if (written < 0 || (size_t)written >= sizeof(value) ||
             !json_append(json,capacity,&n,value)) return 0;
     }
     for (i=0;i<s.manager_history_count && i<DASHBOARD_MANAGER_EVENTS;++i)
     {
         const AiManagerDecision *d = &s.manager_history[i];
+        const AiActionPreview *preview = &s.manager_previews[i];
         char value[240];
         int written = snprintf(value,sizeof(value),
             "%s{\"sequence\":%llu,\"event\":%d,"
@@ -318,8 +321,16 @@ static int status_json(char *json, size_t capacity)
             !json_append(json,capacity,&n,value) ||
             !json_quote(json,capacity,&n,d->actor_login) ||
             !json_append(json,capacity,&n,",\"reason\":") ||
-            !json_quote(json,capacity,&n,d->reason) ||
-            !json_append(json,capacity,&n,"}")) return 0;
+            !json_quote(json,capacity,&n,d->reason)) return 0;
+        {
+            char guard[112];
+            int len_guard = snprintf(guard, sizeof(guard),
+                ",\"preview\":%d,\"guard\":%d,\"executed\":%s}",
+                (int)preview->status, (int)preview->reason,
+                preview->executed ? "true" : "false");
+            if (len_guard < 0 || (size_t)len_guard >= sizeof(guard) ||
+                !json_append(json, capacity, &n, guard)) return 0;
+        }
     }
     return json_append(json,capacity,&n,"]}}");
 }
