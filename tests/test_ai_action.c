@@ -27,6 +27,8 @@ int main(void)
     context.shoutout_enabled = 1;
     context.shoutout_scope_granted = 1;
     context.moderator_authorized = 1;
+    context.global_cooldown_known = 1;
+    context.target_cooldown_known = 1;
 
     ai_action_preview(&d, &context, &result);
     assert(result.status == AI_ACTION_PREVIEW_ALLOWED);
@@ -50,8 +52,17 @@ int main(void)
 
     context.moderator_authorized = 0;
     ai_action_preview(&d, &context, &result);
-    assert(result.reason == AI_ACTION_GUARD_PERMISSION && !result.executed);
+    assert(result.reason == AI_ACTION_GUARD_UNVERIFIED && !result.executed);
     context.moderator_authorized = 1;
+
+    context.global_cooldown_known = 0;
+    ai_action_preview(&d, &context, &result);
+    assert(result.reason == AI_ACTION_GUARD_UNVERIFIED && !result.executed);
+    context.global_cooldown_known = 1;
+    context.target_cooldown_known = 0;
+    ai_action_preview(&d, &context, &result);
+    assert(result.reason == AI_ACTION_GUARD_UNVERIFIED && !result.executed);
+    context.target_cooldown_known = 1;
 
     context.last_global_shoutout_seconds = 19900;
     ai_action_preview(&d, &context, &result);
