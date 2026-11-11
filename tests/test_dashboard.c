@@ -130,6 +130,11 @@ int main(void)
     data.manager_status.monitor_only=1;
     data.manager_status.observed_events=3;
     data.manager_status.proposed_actions=1;
+    data.manager_preview_allowed=0;
+    data.manager_preview_blocked=1;
+    data.manager_previews[0].status=AI_ACTION_PREVIEW_BLOCKED;
+    data.manager_previews[0].reason=AI_ACTION_GUARD_OFFLINE;
+    data.manager_previews[0].executed=0;
     data.manager_history_count=1;
     data.manager_history[0].sequence=3;
     data.manager_history[0].event_type=AI_MANAGER_EVENT_RAID;
@@ -177,6 +182,11 @@ int main(void)
     assert(strstr(buffer,"\"monitor_only\":true"));
     assert(strstr(buffer,"\"observed\":3"));
     assert(strstr(buffer,"\"proposed\":1"));
+    assert(strstr(buffer,"\"preview_allowed\":0"));
+    assert(strstr(buffer,"\"preview_blocked\":1"));
+    assert(strstr(buffer,"\"preview\":2"));
+    assert(strstr(buffer,"\"guard\":4"));
+    assert(strstr(buffer,"\"executed\":false"));
     assert(strstr(buffer,"\"decisions\":[{"));
     assert(strstr(buffer,"raider<test>"));
     assert(strstr(buffer,"Proposed Shoutout"));
