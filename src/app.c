@@ -23,6 +23,7 @@
 #include "twitch_stream.h"
 #include "twitch_chat.h"
 #include "twitch_eventsub.h"
+#include "eventsub_dedupe.h"
 #include "twitch_eventsub_ws.h"
 #include "chat_event.h"
 #include "viewer_rank.h"
@@ -59,6 +60,9 @@ static int g_viewer_challenges_enabled = 0;
 /* Monotonic activity markers used by the private AI cohost. */
 static volatile LONG g_cohost_last_chat_tick = 0;
 static volatile LONG g_cohost_chat_sequence = 0;
+/* Main loop only; static to avoid >260 KiB on the Windows stack. */
+static EventSubDedupe g_eventsub_dedupe;
+
 static volatile LONG g_live_ai_stream_online = 0;
 /* AI Manager is observe-only and owned by the main loop. */
 static void manager_update_policy(const AppConfig *config)
@@ -4009,6 +4013,7 @@ static BotResult run_bot_loop(
         return BOT_ERR_CONFIG;
     }
 
+    memset(&g_eventsub_dedupe, 0, sizeof(g_eventsub_dedupe));
     /* Uses a separate broadcaster token; the chat bot's OAuth session is untouched. */
     ai_manager_init(NULL);
     manager_update_policy(config);
@@ -4507,24 +4512,42 @@ static BotResult run_bot_loop(
                 }
                 else if (message_type == TWITCH_EVENTSUB_NOTIFICATION)
                 {
-                    AchievementEventKind achievement_kind =
-                        achievements_event_kind(json);
-                    if (achievement_kind != ACHIEVEMENT_EVENT_NONE)
+                    char event_id[TWITCH_EVENTSUB_ID_SIZE];
+                    /* Guard is upstream of ALL notification handlers, including
+                     * counters, Twitch chat, achievements and Shoutout.
+                     * Do not process notifications without an intact ID. */
+                    if (twitch_eventsub_get_message_id(
+                            json, event_id, sizeof(event_id)) != BOT_OK)
                     {
-                        chat_result = achievements_process_event(
-                            &config->twitch, json, achievement_kind,
-                            config->raids.auto_shoutout);
-                        if (chat_result == BOT_OK)
-                            manager_observe_achievement(
-                                json, achievement_kind, &dashboard_stream);
+                        log_warning("Skipping EventSub notification without a valid message_id");
+                    }
+                    else if (!eventsub_dedupe_accept(
+                                 &g_eventsub_dedupe, event_id,
+                                 (unsigned long long)time(NULL)))
+                    {
+                        log_debug("EventSub duplicate/invalid notification skipped");
                     }
                     else
-                        chat_result = process_twitch_chat_notification(
-                            config, json, &chat_event);
+                    {
+                        AchievementEventKind achievement_kind =
+                            achievements_event_kind(json);
+                        if (achievement_kind != ACHIEVEMENT_EVENT_NONE)
+                        {
+                            chat_result = achievements_process_event(
+                                &config->twitch, json, achievement_kind,
+                                config->raids.auto_shoutout);
+                            if (chat_result == BOT_OK)
+                                manager_observe_achievement(
+                                    json, achievement_kind, &dashboard_stream);
+                        }
+                        else
+                            chat_result = process_twitch_chat_notification(
+                                config, json, &chat_event);
 
-                    if (chat_result != BOT_OK)
-                        log_warning("Failed to process Twitch EventSub notification: %s",
-                                    bot_result_to_string(chat_result));
+                        if (chat_result != BOT_OK)
+                            log_warning("Failed to process Twitch EventSub notification: %s",
+                                        bot_result_to_string(chat_result));
+                    }
                 }
             }
         }
