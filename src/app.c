@@ -4493,23 +4493,57 @@ static BotResult run_bot_loop(
                 }
                 else if (message_type == TWITCH_EVENTSUB_RECONNECT)
                 {
-                    /*
-                     * В этой версии открываем новую EventSub-сессию
-                     * и создаём подписку заново. Это сохраняет работу
-                     * бота после серверного reconnect-события.
-                     *
-                     * Бесшовный переход по reconnect_url можно добавить
-                     * отдельным улучшением позже.
-                     */
-                    log_warning(
-                        "Twitch requested EventSub reconnect"
-                    );
-
-                    twitch_eventsub_ws_close(
-                        &websocket
-                    );
-
-                    chat_connected = 0;
+                    char reconnect_url[TWITCH_EVENTSUB_URL_SIZE];
+                    char new_welcome[32768];
+                    TwitchEventSubWebSocket replacement = {0};
+                    TwitchEventSubSession replacement_session = {0};
+                    TwitchEventSubMessageType replacement_type =
+                        TWITCH_EVENTSUB_UNKNOWN;
+                    BotResult handover;
+                    /* Twitch transfers existing subscriptions to the URL
+                     * supplied in the reconnect frame. Do not disconnect
+                     * the old socket before the replacement Welcome. */
+                    log_info("Twitch requested seamless EventSub reconnect");
+                    handover = twitch_eventsub_parse_reconnect_url(
+                        json, reconnect_url, sizeof(reconnect_url));
+                    if (handover == BOT_OK)
+                        handover = twitch_eventsub_ws_connect_reconnect(
+                            &replacement, reconnect_url);
+                    SecureZeroMemory(reconnect_url, sizeof(reconnect_url));
+                    if (handover == BOT_OK)
+                    {
+                        /* Bound the welcome wait without altering the old
+                         * socket, which remains capable of receiving events. */
+                        (void)WinHttpSetTimeouts(
+                            replacement.session, 5000, 5000, 5000, 12000);
+                        handover = twitch_eventsub_ws_receive(
+                            &replacement, new_welcome, sizeof(new_welcome));
+                        if (handover == BOT_OK)
+                            handover = twitch_eventsub_get_message_type(
+                                new_welcome, &replacement_type);
+                        if (handover == BOT_OK &&
+                            replacement_type == TWITCH_EVENTSUB_SESSION_WELCOME)
+                            handover = twitch_eventsub_parse_welcome(
+                                new_welcome, &replacement_session);
+                        else if (handover == BOT_OK)
+                            handover = BOT_ERR_TWITCH;
+                        if (handover == BOT_OK &&
+                            replacement_session.session_id[0])
+                        {
+                            twitch_eventsub_ws_close(&websocket);
+                            websocket = replacement;
+                            memset(&replacement, 0, sizeof(replacement));
+                            chat_connected = 1;
+                            log_info("Twitch EventSub seamlessly reconnected; subscriptions retained");
+                        }
+                    }
+                    if (replacement.websocket || replacement.session)
+                    {
+                        twitch_eventsub_ws_close(&replacement);
+                        log_warning("Twitch EventSub handover failed; keeping existing connection");
+                    }
+                    /* If old connection subsequently closes, the normal
+                     * reconnect path will establish new subscriptions. */
                 }
                 else if (message_type == TWITCH_EVENTSUB_NOTIFICATION)
                 {
