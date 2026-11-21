@@ -2,6 +2,7 @@
 #define TWITCH_EVENTSUB_H
 
 #include "bot_result.h"
+#include <stddef.h>
 
 #define TWITCH_EVENTSUB_ID_SIZE       128
 #define TWITCH_EVENTSUB_LOGIN_SIZE    128
@@ -40,6 +41,14 @@ typedef struct
     char text[TWITCH_EVENTSUB_MESSAGE_SIZE];
 
 } TwitchChatMessage;
+
+/* Strictly extract EventSub metadata.message_id, never truncate it.
+ * Caller must check this before any side effects. */
+BotResult twitch_eventsub_get_message_id(
+    const char *json,
+    char *message_id,
+    size_t capacity
+);
 
 BotResult twitch_eventsub_get_message_type(
     const char *json,
