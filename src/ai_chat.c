@@ -11,6 +11,7 @@
 
 #include <windows.h>
 #include <winhttp.h>
+#include <wincrypt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -195,9 +196,11 @@ static AiMemory *memory_reserve_locked(const char *user_id, DWORD now)
     return memory;
 }
 
-/* Disk format is versioned; only viewers who opted in are written.
- * The file is local plaintext in ignored data/; do not upload it to GitHub.
- * Keep structs private here; discard an incompatible future schema. */
+/* V1 records are kept as the plaintext *inside* the encrypted payload.
+ * Legacy V1 files are read once and rewritten using per-user Windows DPAPI.
+ * Never write opt-in viewer dialogue plaintext to disk. */
+#define AI_PERSIST_MAX_FILE (1024UL * 1024UL)
+
 typedef struct
 {
     char magic[16];
@@ -212,20 +215,19 @@ typedef struct
     AiMemoryTurn turns[AI_MEMORY_TURNS];
 } AiDiskRecord;
 
+/* Called with g_ai.lock held. Does not change the old file unless
+ * encryption and the replacement temp write both succeeded. */
 static int persist_write_locked(void)
 {
     AiDiskHeader hdr;
     AiDiskRecord item;
-    FILE *f;
-    size_t i;
     unsigned int count = 0;
-    int ok = 1;
-    f = fopen(AI_PERSIST_TEMP, "wb");
-    if (!f)
-    {
-        log_warning("AI persistent memory: cannot open local file for writing");
-        return 0;
-    }
+    size_t i, offset, plain_size;
+    BYTE *plain = NULL;
+    DATA_BLOB input = {0}, encrypted = {0};
+    FILE *file = NULL;
+    int ok = 0;
+
     memset(&hdr, 0, sizeof(hdr));
     memcpy(hdr.magic, "APELSIN_AI_V1", 13);
     hdr.record_size = (uint32_t)sizeof(item);
@@ -233,8 +235,15 @@ static int persist_write_locked(void)
         if (g_ai.memories[i].persist && g_ai.memories[i].user_id[0])
             ++count;
     hdr.count = count;
-    if (fwrite(&hdr, sizeof(hdr), 1, f) != 1) ok = 0;
-    for (i = 0; ok && i < AI_MEMORY_USERS; ++i)
+    plain_size = sizeof(hdr) + (size_t)count * sizeof(item);
+    if (plain_size > AI_PERSIST_MAX_FILE)
+        return 0;
+    plain = (BYTE *)calloc(1, plain_size);
+    if (!plain)
+        return 0;
+    memcpy(plain, &hdr, sizeof(hdr));
+    offset = sizeof(hdr);
+    for (i = 0; i < AI_MEMORY_USERS; ++i)
     {
         AiMemory *m = &g_ai.memories[i];
         if (!m->persist || !m->user_id[0]) continue;
@@ -243,41 +252,129 @@ static int persist_write_locked(void)
         item.last_unix = m->last_unix;
         item.count = (uint32_t)m->count;
         memcpy(item.turns, m->turns, sizeof(item.turns));
-        if (fwrite(&item, sizeof(item), 1, f) != 1) ok = 0;
+        memcpy(plain + offset, &item, sizeof(item));
+        offset += sizeof(item);
     }
-    if (fclose(f) != 0) ok = 0;
+    SecureZeroMemory(&item, sizeof(item));
+    input.pbData = plain;
+    input.cbData = (DWORD)plain_size;
+    if (!CryptProtectData(&input, L"ApelsinBot opted-in dialogue memory",
+                          NULL, NULL, NULL,
+                          CRYPTPROTECT_UI_FORBIDDEN, &encrypted))
+    {
+        log_warning("AI persistent memory: Windows encryption failed");
+        goto cleanup;
+    }
+
+    file = fopen(AI_PERSIST_TEMP, "wb");
+    if (!file)
+    {
+        log_warning("AI persistent memory: cannot create encrypted temp file");
+        goto cleanup;
+    }
+    if (encrypted.cbData > 0 &&
+        fwrite(encrypted.pbData, 1, encrypted.cbData, file) == encrypted.cbData &&
+        fflush(file) == 0)
+        ok = 1;
+    if (fclose(file) != 0) ok = 0;
+    file = NULL;
     if (!ok ||
         !MoveFileExA(AI_PERSIST_TEMP, AI_PERSIST_PATH,
                      MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
     {
         DeleteFileA(AI_PERSIST_TEMP);
-        log_warning("AI persistent memory: local write/replace failed");
-        return 0;
+        log_warning("AI persistent memory: encrypted write/replace failed");
+        ok = 0;
     }
-    return 1;
+
+cleanup:
+    if (file)
+    {
+        fclose(file);
+        DeleteFileA(AI_PERSIST_TEMP);
+    }
+    if (encrypted.pbData)
+    {
+        SecureZeroMemory(encrypted.pbData, encrypted.cbData);
+        LocalFree(encrypted.pbData);
+    }
+    if (plain)
+    {
+        SecureZeroMemory(plain, plain_size);
+        free(plain);
+    }
+    return ok;
 }
+
 static void persist_load_locked(void)
 {
     AiDiskHeader hdr;
     AiDiskRecord item;
-    FILE *f;
+    DATA_BLOB encrypted = {0}, decrypted = {0};
+    BYTE *on_disk = NULL, *data = NULL;
+    size_t file_size, data_size;
+    FILE *file = NULL;
+    long length;
     uint32_t i;
     long long now = (long long)time(NULL);
     unsigned int loaded = 0;
-    f = fopen(AI_PERSIST_PATH, "rb");
-    if (!f) return;
-    if (fread(&hdr, sizeof(hdr), 1, f) != 1 ||
-        memcmp(hdr.magic, "APELSIN_AI_V1", 13) != 0 ||
-        hdr.record_size != sizeof(item) || hdr.count > AI_MEMORY_USERS)
+    int legacy = 0;
+
+    file = fopen(AI_PERSIST_PATH, "rb");
+    if (!file) return;
+    if (fseek(file, 0, SEEK_END) != 0 ||
+        (length = ftell(file)) <= 0 ||
+        (unsigned long)length > AI_PERSIST_MAX_FILE ||
+        fseek(file, 0, SEEK_SET) != 0)
     {
-        log_warning("AI persistent memory: invalid or incompatible format");
-        fclose(f);
-        return;
+        log_warning("AI persistent memory: invalid or oversized memory file");
+        goto cleanup;
     }
+    file_size = (size_t)length;
+    on_disk = (BYTE *)malloc(file_size);
+    if (!on_disk || fread(on_disk, 1, file_size, file) != file_size)
+    {
+        log_warning("AI persistent memory: unable to read file");
+        goto cleanup;
+    }
+    fclose(file);
+    file = NULL;
+
+    if (file_size >= sizeof(hdr) &&
+        memcmp(on_disk, "APELSIN_AI_V1", 13) == 0)
+    {
+        /* Compatibility migration, never save plaintext again. */
+        legacy = 1;
+        data = on_disk;
+        data_size = file_size;
+    }
+    else
+    {
+        encrypted.pbData = on_disk;
+        encrypted.cbData = (DWORD)file_size;
+        if (!CryptUnprotectData(&encrypted, NULL, NULL, NULL, NULL,
+                                CRYPTPROTECT_UI_FORBIDDEN, &decrypted))
+        {
+            log_warning("AI persistent memory: DPAPI decrypt failed; original file retained");
+            goto cleanup;
+        }
+        data = decrypted.pbData;
+        data_size = decrypted.cbData;
+    }
+    if (data_size < sizeof(hdr))
+        goto invalid;
+    memcpy(&hdr, data, sizeof(hdr));
+    if (memcmp(hdr.magic, "APELSIN_AI_V1", 13) != 0 ||
+        hdr.record_size != sizeof(item) ||
+        hdr.count > AI_MEMORY_USERS ||
+        data_size != sizeof(hdr) + (size_t)hdr.count * sizeof(item))
+        goto invalid;
     for (i = 0; i < hdr.count; ++i)
     {
         AiMemory *m;
-        if (fread(&item, sizeof(item), 1, f) != 1) break;
+        size_t j;
+        memcpy(&item, data + sizeof(hdr) + (size_t)i * sizeof(item),
+               sizeof(item));
         item.user_id[sizeof(item.user_id)-1] = '\0';
         if (!item.user_id[0] || item.count > AI_MEMORY_TURNS ||
             item.last_unix <= 0 || item.last_unix > now ||
@@ -288,9 +385,7 @@ static void persist_load_locked(void)
         memcpy(m->user_id, item.user_id, sizeof(m->user_id));
         memcpy(m->turns, item.turns, sizeof(m->turns));
         m->count = item.count;
-        /* Binary storage is read only from locally generated records.
-         * Enforce termination even if manually edited or truncated. */
-        for (size_t j = 0; j < m->count; ++j)
+        for (j = 0; j < m->count; ++j)
         {
             m->turns[j].question[AI_QUESTION_BYTES] = '\0';
             m->turns[j].answer[AI_RESPONSE_BYTES] = '\0';
@@ -301,10 +396,26 @@ static void persist_load_locked(void)
         m->revision = ++g_ai.next_memory_revision;
         ++loaded;
     }
-    fclose(f);
-    if (loaded != hdr.count && !persist_write_locked())
-        log_warning("AI memory: unable to purge expired/invalid records");
+    SecureZeroMemory(&item, sizeof(item));
+    if ((legacy || loaded != hdr.count) && !persist_write_locked())
+        log_warning("AI memory: migration/purge could not be persisted");
     log_info("AI opted-in dialogue histories loaded: %u", loaded);
+    goto cleanup;
+
+invalid:
+    log_warning("AI persistent memory: incompatible or invalid content; file retained");
+cleanup:
+    if (file) fclose(file);
+    if (decrypted.pbData)
+    {
+        SecureZeroMemory(decrypted.pbData, decrypted.cbData);
+        LocalFree(decrypted.pbData);
+    }
+    if (on_disk)
+    {
+        SecureZeroMemory(on_disk, file_size);
+        free(on_disk);
+    }
 }
 
 /* The result is committed only when still in the same conversation revision. */
