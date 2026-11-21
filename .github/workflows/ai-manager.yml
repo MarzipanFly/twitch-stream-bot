@@ -21,6 +21,7 @@ on:
       - "tests/test_ai_manager.c"
       - "tests/test_ai_action.c"
       - "tests/test_eventsub_dedupe.c"
+      - "tests/test_eventsub_id.c"
       - "tests/check_ai_quality.py"
       - "training/dialogues.jsonl"
       - "training/evaluation.jsonl"
@@ -47,6 +48,10 @@ jobs:
         run: cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/test_eventsub_dedupe.c src/eventsub_dedupe.c -o test_eventsub_dedupe
       - name: Run EventSub replay suppression scenarios
         run: ./test_eventsub_dedupe
+      - name: Compile EventSub strict ID parser
+        run: cc -std=c11 -Wall -Wextra -Werror -Iinclude -Ithird_party/cjson tests/test_eventsub_id.c src/twitch_eventsub.c third_party/cjson/cJSON.c -lm -o test_eventsub_id
+      - name: Run EventSub ID parsing scenarios
+        run: ./test_eventsub_id
       - name: Verify AI data quality and train/eval isolation
         run: python3 tests/check_ai_quality.py
 
@@ -61,4 +66,4 @@ jobs:
         run: |
           for /f "usebackq delims=" %%p in (`"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -property installationPath`) do set "VS_DIR=%%p"
           call "%VS_DIR%\\Common7\\Tools\\VsDevCmd.bat" -arch=x64
-          cl /nologo /W3 /TC /std:c11 /Iinclude /Ithird_party/cjson /c src\\ai_chat.c src\\token_store.c src\\twitch_eventsub.c src\\eventsub_dedupe.c
+          cl /nologo /W3 /TC /std:c11 /Iinclude /Ithird_party/cjson /c src\\app.c src\\ai_chat.c src\\token_store.c src\\twitch_eventsub.c src\\eventsub_dedupe.c
