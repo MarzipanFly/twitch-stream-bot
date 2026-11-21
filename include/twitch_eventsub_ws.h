@@ -30,6 +30,11 @@ BotResult twitch_eventsub_ws_connect(
     TwitchEventSubWebSocket *client
 );
 
+/* Twitch reconnect keeps the previous socket alive until new Welcome. */
+BotResult twitch_eventsub_ws_connect_reconnect(
+    TwitchEventSubWebSocket *client, const char *reconnect_url
+);
+
 BotResult twitch_eventsub_ws_receive(
     TwitchEventSubWebSocket *client,
     char *buffer,
