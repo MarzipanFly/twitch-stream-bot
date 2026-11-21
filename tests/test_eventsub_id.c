@@ -30,6 +30,41 @@ int main(void)
            BOT_ERR_JSON);
     assert(twitch_eventsub_get_message_id(good, NULL, 10) == BOT_ERR_CONFIG);
 
-    puts("EventSub metadata.message_id parsing tests passed");
+    {
+        char path[TWITCH_EVENTSUB_URL_SIZE];
+        char url[TWITCH_EVENTSUB_URL_SIZE];
+        const char *valid_reconnect =
+            "{\"metadata\":{\"message_type\":\"session_reconnect\"},"
+            "\"payload\":{\"session\":{\"reconnect_url\":"
+            "\"wss://eventsub.wss.twitch.tv/ws?reconnect=123abc\"}}}";
+        assert(twitch_eventsub_reconnect_path(
+            "wss://eventsub.wss.twitch.tv/ws?reconnect=123abc",
+            path, sizeof(path)));
+        assert(strcmp(path, "/ws?reconnect=123abc") == 0);
+        assert(twitch_eventsub_reconnect_path(
+            "wss://eventsub.wss.twitch.tv?reconnect=xyz",
+            path, sizeof(path)));
+        assert(strcmp(path, "/?reconnect=xyz") == 0);
+        assert(!twitch_eventsub_reconnect_path(
+            "wss://eventsub.wss.twitch.tv.evil/ws?reconnect=1",
+            path, sizeof(path)));
+        assert(!twitch_eventsub_reconnect_path(
+            "ws://eventsub.wss.twitch.tv/ws?reconnect=1",
+            path, sizeof(path)));
+        assert(!twitch_eventsub_reconnect_path(
+            "wss://eventsub.wss.twitch.tv/ws?reconnect=1#fragment",
+            path, sizeof(path)));
+        assert(!twitch_eventsub_reconnect_path(
+            "wss://eventsub.wss.twitch.tv/ws?reconnect=1",
+            path, 4));
+        assert(twitch_eventsub_parse_reconnect_url(
+            valid_reconnect, url, sizeof(url)) == BOT_OK);
+        assert(strcmp(url,
+            "wss://eventsub.wss.twitch.tv/ws?reconnect=123abc") == 0);
+        assert(twitch_eventsub_parse_reconnect_url(
+            valid_reconnect, url, 6) == BOT_ERR_JSON);
+        assert(!url[0]);
+    }
+    puts("EventSub metadata and reconnect URL parsing tests passed");
     return 0;
 }
