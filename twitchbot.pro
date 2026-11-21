@@ -50,6 +50,7 @@ SOURCES += \
     src/twitch_auth.c \
     src/twitch_chat.c \
     src/twitch_eventsub.c \
+    src/eventsub_dedupe.c \
     src/twitch_eventsub_ws.c \
     src/twitch_refresh.c \
     src/twitch_stream.c \
@@ -101,6 +102,7 @@ HEADERS += \
     include/twitch_auth.h \
     include/twitch_chat.h \
     include/twitch_eventsub.h \
+    include/eventsub_dedupe.h \
     include/twitch_eventsub_ws.h \
     include/twitch_refresh.h \
     include/twitch_stream.h \
