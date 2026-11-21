@@ -32,6 +32,40 @@ static void copy_json_string(
     );
 }
 
+BotResult twitch_eventsub_get_message_id(
+    const char *json,
+    char *message_id,
+    size_t capacity
+)
+{
+    cJSON *root;
+    const cJSON *metadata, *id;
+    size_t length;
+
+    if (!json || !message_id || capacity < 2)
+        return BOT_ERR_CONFIG;
+    message_id[0] = '\0';
+    root = cJSON_Parse(json);
+    if (!root)
+        return BOT_ERR_JSON;
+    metadata = cJSON_GetObjectItemCaseSensitive(root, "metadata");
+    id = cJSON_GetObjectItemCaseSensitive(metadata, "message_id");
+    if (!cJSON_IsString(id) || !id->valuestring || !id->valuestring[0])
+    {
+        cJSON_Delete(root);
+        return BOT_ERR_JSON;
+    }
+    length = strlen(id->valuestring);
+    if (length >= capacity)
+    {
+        cJSON_Delete(root);
+        return BOT_ERR_JSON;
+    }
+    memcpy(message_id, id->valuestring, length + 1);
+    cJSON_Delete(root);
+    return BOT_OK;
+}
+
 BotResult twitch_eventsub_get_message_type(
     const char *json,
     TwitchEventSubMessageType *type
