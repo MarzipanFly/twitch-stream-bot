@@ -51,3 +51,14 @@ jobs:
         run: python3 tests/check_ai_quality.py
 
 
+
+  windows-syntax:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile changed Windows C modules
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%p in (`"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -property installationPath`) do set "VS_DIR=%%p"
+          call "%VS_DIR%\\Common7\\Tools\\VsDevCmd.bat" -arch=x64
+          cl /nologo /W3 /TC /std:c11 /Iinclude /Ithird_party/cjson /c src\\ai_chat.c src\\token_store.c src\\twitch_eventsub.c src\\eventsub_dedupe.c
