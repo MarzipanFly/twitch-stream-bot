@@ -647,7 +647,7 @@ static BotResult run_device_authorization(
 
     /* Show the short-lived code in the interactive console only.
      * logger.log_info() also writes to the persistent log file. */
-    fprintf(stdout, "Twitch authorization code (console only): %s\\n",
+    fprintf(stdout, "Twitch authorization code (console only): %s\n",
             device.user_code);
     fflush(stdout);
 
