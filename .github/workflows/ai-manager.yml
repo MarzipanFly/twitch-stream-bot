@@ -4,14 +4,25 @@ on:
   push:
     branches:
       - feature/apelsin-natural-conversation
+      - fix/deep-audit-security-ai-v2
   pull_request:
     paths:
       - "include/ai_manager.h"
       - "include/ai_action.h"
+      - "include/eventsub_dedupe.h"
+      - "include/twitch_eventsub.h"
       - "src/ai_manager.c"
       - "src/ai_action.c"
+      - "src/eventsub_dedupe.c"
+      - "src/twitch_eventsub.c"
+      - "src/app.c"
+      - "src/ai_chat.c"
+      - "src/token_store.c"
       - "tests/test_ai_manager.c"
       - "tests/test_ai_action.c"
+      - "tests/test_eventsub_dedupe.c"
+      - "tests/check_ai_quality.py"
+      - "training/dialogues.jsonl"
       - "training/evaluation.jsonl"
       - "tests/eval_dashboard_ai.py"
       - "twitchbot.pro"
@@ -32,4 +43,11 @@ jobs:
         run: ./test_ai_action
       - name: Validate evaluation scenario syntax without calling Ollama
         run: python3 tests/eval_dashboard_ai.py --list --prefix persona_ --limit 0
+      - name: Compile EventSub dedupe with warnings as errors
+        run: cc -std=c11 -Wall -Wextra -Werror -Iinclude tests/test_eventsub_dedupe.c src/eventsub_dedupe.c -o test_eventsub_dedupe
+      - name: Run EventSub replay suppression scenarios
+        run: ./test_eventsub_dedupe
+      - name: Verify AI data quality and train/eval isolation
+        run: python3 tests/check_ai_quality.py
+
 
