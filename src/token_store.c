@@ -257,9 +257,11 @@ static BotResult token_store_load_from(
     file_size =
         ftell(file);
 
-    if (file_size <= 0)
+    /* DPAPI blobs must be small; reject oversized files before malloc and DWORD cast. */
+    if (file_size <= 0 || file_size > 65536L)
     {
         fclose(file);
+        log_warning("OAuth token store has invalid or excessive size");
         return BOT_ERR_STORAGE;
     }
 
