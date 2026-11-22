@@ -30,77 +30,19 @@ async function refresh() {
   text('channel',d.broadcaster);text('game',d.live?(d.game||'Не указана'):'Офлайн');
   text('chat',d.chat?'Подключён':'Не подключён');text('uptime',elapsed(d.uptime));
   text('track',d.track||'Нет активного трека');
-  const idleSeconds=Math.max(0,Number(d.chat_idle_seconds)||0);
-  if(d.ai_suggestion_pending) text('cohostIdle','ИИ готовит подсказку…');
-  else if(!d.live) text('cohostIdle','Ожидание начала трансляции');
-  else if(!d.chat) text('cohostIdle','Ожидание подключения к чату');
-  else text('cohostIdle',idleSeconds<90?'Чат активен · тишина '+idleSeconds+' сек':'Тишина '+elapsed(idleSeconds));
-  text('cohostSuggestion',d.ai_suggestion||'Подсказка появится после 90 секунд тишины во время эфира.');
-  text('aiTestReply',d.ai_test_pending?'Генерирую ответ…':(d.ai_test_reply||'Здесь появится тестовый ответ.'));
-  text('aiTestHistoryInfo','Контекст диалога: '+(Number(d.ai_test_turns)||0)+' из 4 ответов (только в RAM).');
-  text('aiTestStatus',d.ai_test_pending?'ИИ генерирует ответ локально…':(d.ai_test_reply?'Готово. Ответ не отправлялся в Twitch.':'Для теста ИИ должен быть включён, Ollama запущена.'));
   renderLeaderboard(d.leaderboard||[]);
   text('obs',!d.obs?'Выключен в настройках':d.obs_connected?'OBS подключён':'OBS недоступен');
   text('promoPeriod',d.promo_min+'–'+d.promo_max+' мин');
   renderObs(d);
-  renderAudio(d);renderMusic(d);renderChart(d);renderManager(d.ai_manager);
+  renderAudio(d);renderMusic(d);renderChart(d);
   text('updated','Обновлено '+new Date().toLocaleTimeString('ru-RU'));
-  for(const feature of ['ai','promo','reports','raids']) {
+  for(const feature of ['promo','reports','raids']) {
     if(pending.has(feature)) continue;
     byId('toggle-'+feature).setAttribute('aria-checked',String(Boolean(feature==='raids'?d.raids:d[feature])));
   }
  } catch(e) {
   byId('service').textContent='● Нет связи';byId('service').classList.remove('connected');
   text('updated','Нет связи с программой');
- }
-}
-const managerEventNames={
- 1:'Обращение к боту',2:'Рейд',3:'Подписка на канал',4:'Платная подписка',
- 5:'Начало стрима',6:'Окончание стрима',7:'Сцена OBS',8:'Ошибка сервиса'
-};
-const managerActionNames={
- 0:'Без действия',1:'Ответ ИИ',2:'Shoutout',3:'Приветствие',
- 4:'Отчёт об эфире',5:'Уведомление владельца',6:'Смена сцены OBS'
-};
-const managerDecisionNames={0:'Наблюдение',1:'Предложено',2:'Дубликат',3:'Отклонено'};
-const managerPreviewNames={0:'Действие не требуется',1:'Условия выполнены',2:'Заблокировано'};
-const managerGuardNames={
- 0:'нет ограничений',1:'некорректное решение',2:'действие ещё не поддерживается',
- 3:'функция отключена',4:'трансляция офлайн',5:'нет OAuth-разрешения',
- 6:'действует cooldown',7:'сервис недоступен',
- 8:'права или cooldown не подтверждены'
-};
-function renderManager(manager) {
- const m=manager||{};
- text('managerMode',m.monitor_only===true?'Monitor Only':'Нет данных');
- text('managerObserved',Number(m.observed)||0);
- text('managerProposed',Number(m.proposed)||0);
- text('managerDuplicates',Number(m.duplicates)||0);
- text('managerRejected',Number(m.rejected)||0);
- text('managerAllowed',Number(m.preview_allowed)||0);
- text('managerBlocked',Number(m.preview_blocked)||0);
- const root=byId('managerDecisions');
- const rows=Array.isArray(m.decisions)?m.decisions.slice().reverse():[];
- root.replaceChildren();
- if(!rows.length){root.textContent='Решений пока нет. Ожидаем события Twitch…';return;}
- for(const d of rows) {
-  const line=document.createElement('div');line.className='small-row';
-  const box=document.createElement('div');box.style.minWidth='0';box.style.flex='1';
-  const header=document.createElement('div');header.className='small-name';
-  const when=Number(d.time)>0?new Date(Number(d.time)*1000).toLocaleTimeString('ru-RU'):'—';
-  header.textContent=(managerEventNames[d.event]||'Событие')+
-    (d.actor?' · '+d.actor:'')+' · '+when;
-  const detail=document.createElement('div');detail.className='tiny';
-  detail.textContent=(managerDecisionNames[d.status]||'Неизвестно')+
-   ' · '+(managerActionNames[d.action]||'Без действия')+
-   (d.reason?' · '+d.reason:'');
-  const preview=document.createElement('div');preview.className='tiny';
-  preview.style.marginTop='4px';
-  preview.textContent='Dry Run (текущее состояние): '+
-   (managerPreviewNames[d.preview]||'Нет данных')+
-   (Number(d.preview)===2?' · '+(managerGuardNames[d.guard]||'неизвестная причина'):'')+
-   ' · не выполнено';
-  box.append(header,detail,preview);line.append(box);root.append(line);
  }
 }
 function renderLeaderboard(people) {
@@ -276,22 +218,6 @@ byId('musicClear').addEventListener('click',()=>{
 });
 byId('markMoment').addEventListener('click',()=>command({action:'moment'}));
 byId('toggle-raids').addEventListener('click',()=>toggle('raids'));
-byId('managerDemoButton').addEventListener('click',async()=>{
- const button=byId('managerDemoButton');
- button.disabled=true;
- try {
-  const response=await fetch('/api/control',{
-   method:'POST',
-   headers:{'Content-Type':'application/x-www-form-urlencoded','X-Apelsin-Local':'1'},
-   body:'action=manager_demo',cache:'no-store'
-  });
-  if(response.status!==202)throw Error('Тест отклонён ('+response.status+')');
-  toast('Тестовый рейд передан AI Manager · Twitch не затронут');
-  await refresh();
- } catch(error){toast('Ошибка проверки: '+error.message);}
- finally{button.disabled=false;}
-});
-
 async function toggle(feature) {
  if(pending.has(feature))return;
  const button=byId('toggle-'+feature);
@@ -308,36 +234,5 @@ async function toggle(feature) {
  } catch(e) {toast('Ошибка: '+e.message);}
  finally {pending.delete(feature);button.disabled=false;await refresh();}
 }
-byId('aiTestResetButton').addEventListener('click',async()=>{
- const button=byId('aiTestResetButton'),status=byId('aiTestStatus');
- button.disabled=true;
- try{
-  const body=new URLSearchParams({action:'ai_test_reset'});
-  const response=await fetch('/api/control',{method:'POST',
-   headers:{'Content-Type':'application/x-www-form-urlencoded','X-Apelsin-Local':'1'},
-   body:body.toString(),cache:'no-store'});
-  if(response.status!==202)throw Error('Сброс отклонён ('+response.status+').');
-  status.textContent='Сбрасываю временную историю диалога…';
-  await new Promise(r=>setTimeout(r,700));await refresh();
- }catch(e){status.textContent='Не удалось очистить историю: '+e.message;}
- finally{button.disabled=false;}
-});
-byId('aiTestButton').addEventListener('click',async()=>{
- const input=byId('aiTestMessage'),button=byId('aiTestButton'),status=byId('aiTestStatus');
- const message=input.value.trim();
- if(!message){status.textContent='Сначала введи сообщение зрителя.';return;}
- if(message.length>500){status.textContent='Сообщение слишком длинное (максимум 500 символов).';return;}
- button.disabled=true;status.textContent='Отправляю запрос локальному ИИ…';
- try{
-  const body=new URLSearchParams({action:'ai_test',message});
-  const response=await fetch('/api/control',{method:'POST',
-   headers:{'Content-Type':'application/x-www-form-urlencoded','X-Apelsin-Local':'1'},
-   body:body.toString(),cache:'no-store'});
-  if(response.status!==202)throw Error('Сервер отклонил тест ('+response.status+').');
-  status.textContent='Запрос принят. Ответ появится в отдельном блоке ниже.';
-  await new Promise(r=>setTimeout(r,800));await refresh();
- }catch(e){status.textContent='Ошибка: '+e.message;}
- finally{button.disabled=false;}
-});
-for(const feature of ['ai','promo','reports'])byId('toggle-'+feature).addEventListener('click',()=>toggle(feature));
+for(const feature of ['promo','reports'])byId('toggle-'+feature).addEventListener('click',()=>toggle(feature));
 refresh();setInterval(refresh,5000);

@@ -24,21 +24,12 @@ SOURCES += \
     src/music_queue.c \
     src/music_audio.c \
     src/music_worker.c \
-    src/ai_chat.c \
-    src/ai_manager.c \
-    src/ai_action.c \
-    src/ai_text.c \
-    src/ai_retrieval.c \
-    src/ai_game_scope.c \
-    src/ai_semantic.c \
     src/chat_promo.c \
     src/stream_report.c \
     src/dashboard_server.c \
     src/dashboard_obs.c \
     src/dashboard_settings.c \
     src/dashboard_stats.c \
-    src/ai_knowledge.c \
-    src/ai_tactics.c \
     src/achievements.c \
     src/music_library.c \
     src/youtube_metadata.c \
@@ -76,21 +67,12 @@ HEADERS += \
     include/music_queue.h \
     include/music_audio.h \
     include/music_worker.h \
-    include/ai_chat.h \
-    include/ai_manager.h \
-    include/ai_action.h \
-    include/ai_text.h \
-    include/ai_retrieval.h \
-    include/ai_game_scope.h \
-    include/ai_semantic.h \
     include/chat_promo.h \
     include/stream_report.h \
     include/dashboard.h \
     include/dashboard_obs.h \
     include/dashboard_settings.h \
     include/dashboard_stats.h \
-    include/ai_knowledge.h \
-    include/ai_tactics.h \
     include/achievements.h \
     include/music_library.h \
     include/youtube_metadata.h \
@@ -131,14 +113,7 @@ win32-msvc* {
     LIBS += Advapi32.lib
 }
 
-win32 {
-    # Keep the reviewed local AI knowledge available beside the built executable.
-    QMAKE_POST_LINK += $$escape_expand(\\n\\t)if not exist \"$$OUT_PWD\\knowledge\" mkdir \"$$OUT_PWD\\knowledge\"
-    QMAKE_POST_LINK += $$escape_expand(\\n\\t)copy /Y \"$$PWD\\knowledge\\facts.tsv\" \"$$OUT_PWD\\knowledge\\facts.tsv\"
-}
-
 DISTFILES += \
-    knowledge/facts.tsv \
     config.ini \
     dashboard/index.html \
     dashboard/app.js \
