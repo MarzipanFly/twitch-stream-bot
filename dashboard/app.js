@@ -24,22 +24,13 @@ async function refresh() {
   text('channel',d.broadcaster);text('game',d.live?(d.game||'Не указана'):'Офлайн');
   text('chat',d.chat?'Подключён':'Не подключён');text('uptime',elapsed(d.uptime));
   text('track',d.track||'Нет активного трека');
-  const idleSeconds=Math.max(0,Number(d.chat_idle_seconds)||0);
-  if(d.ai_suggestion_pending) text('cohostIdle','ИИ готовит подсказку…');
-  else if(!d.live) text('cohostIdle','Ожидание начала трансляции');
-  else if(!d.chat) text('cohostIdle','Ожидание подключения к чату');
-  else text('cohostIdle',idleSeconds<90?'Чат активен · тишина '+idleSeconds+' сек':'Тишина '+elapsed(idleSeconds));
-  text('cohostSuggestion',d.ai_suggestion||'Подсказка появится после 90 секунд тишины во время эфира.');
-  text('aiTestReply',d.ai_test_pending?'Генерирую ответ…':(d.ai_test_reply||'Здесь появится тестовый ответ.'));
-  text('aiTestHistoryInfo','Контекст диалога: '+(Number(d.ai_test_turns)||0)+' из 4 ответов (только в RAM).');
-  text('aiTestStatus',d.ai_test_pending?'ИИ генерирует ответ локально…':(d.ai_test_reply?'Готово. Ответ не отправлялся в Twitch.':'Для теста ИИ должен быть включён, Ollama запущена.'));
   renderLeaderboard(d.leaderboard||[]);
   text('obs',!d.obs?'Выключен в настройках':d.obs_connected?'OBS подключён':'OBS недоступен');
   text('promoPeriod',d.promo_min+'–'+d.promo_max+' мин');
   renderObs(d);
   renderAudio(d);renderMusic(d);renderChart(d);
   text('updated','Обновлено '+new Date().toLocaleTimeString('ru-RU'));
-  for(const feature of ['ai','promo','reports']) {
+  for(const feature of ['promo','reports']) {
     if(pending.has(feature)) continue;
     byId('toggle-'+feature).setAttribute('aria-checked',String(Boolean(d[feature])));
   }
@@ -236,36 +227,5 @@ async function toggle(feature) {
  } catch(e) {toast('Ошибка: '+e.message);}
  finally {pending.delete(feature);button.disabled=false;await refresh();}
 }
-byId('aiTestResetButton').addEventListener('click',async()=>{
- const button=byId('aiTestResetButton'),status=byId('aiTestStatus');
- button.disabled=true;
- try{
-  const body=new URLSearchParams({action:'ai_test_reset'});
-  const response=await fetch('/api/control',{method:'POST',
-   headers:{'Content-Type':'application/x-www-form-urlencoded','X-Apelsin-Local':'1'},
-   body:body.toString(),cache:'no-store'});
-  if(response.status!==202)throw Error('Сброс отклонён ('+response.status+').');
-  status.textContent='Сбрасываю временную историю диалога…';
-  await new Promise(r=>setTimeout(r,700));await refresh();
- }catch(e){status.textContent='Не удалось очистить историю: '+e.message;}
- finally{button.disabled=false;}
-});
-byId('aiTestButton').addEventListener('click',async()=>{
- const input=byId('aiTestMessage'),button=byId('aiTestButton'),status=byId('aiTestStatus');
- const message=input.value.trim();
- if(!message){status.textContent='Сначала введи сообщение зрителя.';return;}
- if(message.length>500){status.textContent='Сообщение слишком длинное (максимум 500 символов).';return;}
- button.disabled=true;status.textContent='Отправляю запрос локальному ИИ…';
- try{
-  const body=new URLSearchParams({action:'ai_test',message});
-  const response=await fetch('/api/control',{method:'POST',
-   headers:{'Content-Type':'application/x-www-form-urlencoded','X-Apelsin-Local':'1'},
-   body:body.toString(),cache:'no-store'});
-  if(response.status!==202)throw Error('Сервер отклонил тест ('+response.status+').');
-  status.textContent='Запрос принят. Ответ появится в отдельном блоке ниже.';
-  await new Promise(r=>setTimeout(r,800));await refresh();
- }catch(e){status.textContent='Ошибка: '+e.message;}
- finally{button.disabled=false;}
-});
-for(const feature of ['ai','promo','reports'])byId('toggle-'+feature).addEventListener('click',()=>toggle(feature));
+for(const feature of ['promo','reports'])byId('toggle-'+feature).addEventListener('click',()=>toggle(feature));
 refresh();setInterval(refresh,5000);

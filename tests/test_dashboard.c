@@ -4,9 +4,12 @@
  *     src/dashboard_server.c src/logger.c -lws2_32 -o test_dashboard.exe
  * Then run test_dashboard.exe; it uses tests/.tmp_dashboard, not real data/.
  */
-#include "dashboard.h"
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include "dashboard.h"
 #include <windows.h>
 #include <direct.h>
 #include <assert.h>
@@ -96,13 +99,12 @@ int main(void)
     _mkdir("tests/.tmp_dashboard");
     assert(_chdir("tests/.tmp_dashboard")==0);
     _mkdir("data");
-    config.ai.enabled=1;
     config.promo.enabled=1;
     config.stream_report.enabled=0;
     assert(dashboard_save_preferences(&config));
     memset(&config,0,sizeof(config));
     dashboard_load_preferences(&config);
-    assert(config.ai.enabled==1 && config.promo.enabled==1);
+    assert(config.promo.enabled==1);
     assert(config.stream_report.enabled==0);
 
     assert(dashboard_start(1,18765));
@@ -120,7 +122,6 @@ int main(void)
     strcpy(data.obs_state.audio[0].name,"Mic/Aux");
     data.obs_state.audio[0].volume=0.65;
     data.obs_state.audio[0].muted=0;
-    data.ai_cooldown=30;
     data.cooldown_normal=10;
     data.cooldown_game=5;
     data.cooldown_bruh=15;
@@ -173,7 +174,7 @@ int main(void)
     request(same_site,buffer,sizeof(buffer));
     assert(strstr(buffer,"202 Accepted"));
     assert(dashboard_take_changes(&change));
-    assert(change.reports==0 && change.ai==-1 && change.promo==-1);
+    assert(change.reports==0 && change.promo==-1);
     assert(!dashboard_take_changes(&change));
 
     request(scene_change,buffer,sizeof(buffer));
