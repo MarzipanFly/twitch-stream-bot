@@ -99,18 +99,6 @@ typedef struct
     unsigned int poll_seconds;
 } ObsDirectorConfig;
 
-/* Local Ollama model; never requires an Internet API key. */
-typedef struct
-{
-    int enabled;
-    char model[128];
-    unsigned int cooldown_seconds;
-    int semantic_enabled; /* Optional Ollama embedding search. */
-    int live_chat_enabled; /* Opt-in replies to direct mentions in chat. */
-    unsigned int live_chat_cooldown_seconds;
-    char semantic_model[128];
-} AiConfig;
-
 /* Periodic social links announcement in the Twitch chat. */
 typedef struct
 {
@@ -158,7 +146,6 @@ typedef struct
     ObsConfig obs;
     CategorySyncConfig category_sync;
     ObsDirectorConfig obs_director;
-    AiConfig ai;
     PromoConfig promo;
     StreamReportConfig stream_report;
     DashboardConfig dashboard;

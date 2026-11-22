@@ -1,0 +1,32 @@
+name: ApelsinBot core Windows tests
+on:
+  push:
+    branches:
+      - main
+      - refactor/remove-local-ai-main
+  pull_request:
+    paths:
+      - "src/**"
+      - "include/**"
+      - "dashboard/**"
+      - "tests/**"
+      - "twitchbot.pro"
+      - ".github/workflows/core-smoke.yml"
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile core modules without local AI
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%p in (`"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -property installationPath`) do set "VS_DIR=%%p"
+          call "%VS_DIR%\\Common7\\Tools\\VsDevCmd.bat" -arch=x64
+          cl /nologo /W3 /TC /std:c11 /Iinclude /Ithird_party/cjson /c src\\app.c src\\config.c src\\dashboard_server.c src\\dashboard_settings.c src\\main.c
+      - name: Compile and test local dashboard
+        shell: cmd
+        run: |
+          for /f "usebackq delims=" %%p in (`"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -property installationPath`) do set "VS_DIR=%%p"
+          call "%VS_DIR%\\Common7\\Tools\\VsDevCmd.bat" -arch=x64
+          cl /nologo /W3 /TC /std:c11 /Iinclude tests\\test_dashboard.c src\\dashboard_server.c src\\logger.c /Fe:test_dashboard.exe /link Ws2_32.lib
+          test_dashboard.exe

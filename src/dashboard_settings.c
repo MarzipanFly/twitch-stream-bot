@@ -129,11 +129,6 @@ static int set_plain(AppConfig *cfg, const char *key, const char *value)
         if (!integer(value,1,60,&x) || x<cfg->promo.min_minutes) return 0;
         cfg->promo.max_minutes=(unsigned int)x;
     }
-    else if (!strcmp(key,"ai_cooldown"))
-    {
-        if (!integer(value,5,300,&x)) return 0;
-        cfg->ai.cooldown_seconds=(unsigned int)x;
-    }
     else if (!strcmp(key,"normal_cooldown") ||
              !strcmp(key,"game_cooldown") ||
              !strcmp(key,"bruh_cooldown"))
@@ -165,7 +160,7 @@ static int save_plain(const AppConfig *cfg)
     int ok=1;
     if (!f) return 0;
     if (fprintf(f,"telegram_url=%s\ndiscord_url=%s\ntelegram_chat_id=%s\n"
-                "promo_min=%u\npromo_max=%u\nai_cooldown=%u\n"
+                "promo_min=%u\npromo_max=%u\n"
                 "normal_cooldown=%u\ngame_cooldown=%u\nbruh_cooldown=%u\n"
                 "obs_enabled=%d\ncategory_sync_enabled=%d\ndirector_enabled=%d\n"
                 "director_auto_game=%d\ndirector_auto_chat=%d\n"
@@ -175,7 +170,7 @@ static int save_plain(const AppConfig *cfg)
                 "director_manual_override=%u\ndirector_poll_seconds=%u\n",
                 cfg->telegram.channel_url,cfg->discord.invite_url,
                 cfg->telegram.chat_id,cfg->promo.min_minutes,
-                cfg->promo.max_minutes,cfg->ai.cooldown_seconds,
+                cfg->promo.max_minutes,
                 cfg->cooldowns.normal_seconds,cfg->cooldowns.game_seconds,
                 cfg->cooldowns.bruh_seconds,cfg->obs.enabled,
                 cfg->category_sync.enabled,cfg->obs_director.enabled,

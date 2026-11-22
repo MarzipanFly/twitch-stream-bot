@@ -1,11 +1,13 @@
 /* Native WinSock loopback dashboard for ApelsinBot (pure C / MinGW).
  * Never bind to 0.0.0.0; only serve a static local page and tiny JSON API.
  */
-#include "dashboard.h"
-#include "logger.h"
-
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include "dashboard.h"
+#include "logger.h"
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,7 +37,7 @@ static DashboardServer g_dashboard;
 
 static void changes_reset(DashboardChanges *v)
 {
-    v->ai = v->promo = v->reports = -1;
+    v->promo = v->reports = -1;
     v->obs_action = 0;
     v->obs_scene[0] = '\0';
     v->audio_action=0;v->audio_input[0]='\0';
@@ -43,7 +45,6 @@ static void changes_reset(DashboardChanges *v)
     v->music_action=0;v->mark_moment=0;
     v->settings_action=0;
     v->settings_key[0]='\0';v->settings_value[0]='\0';
-    v->ai_test_action=0;v->ai_test_message[0]='\0';
 }
 void dashboard_load_preferences(AppConfig *cfg)
 {
@@ -55,8 +56,6 @@ void dashboard_load_preferences(AppConfig *cfg)
     while (fgets(line, sizeof(line), f))
     {
         int x;
-        if (sscanf(line, "ai=%d", &x) == 1 && (x == 0 || x == 1))
-            cfg->ai.enabled = x;
         if (sscanf(line, "promo=%d", &x) == 1 && (x == 0 || x == 1))
             cfg->promo.enabled = x;
         if (sscanf(line, "reports=%d", &x) == 1 && (x == 0 || x == 1))
@@ -72,8 +71,8 @@ int dashboard_save_preferences(const AppConfig *cfg)
     if (!cfg) return 0;
     f = fopen(DASHBOARD_PREFS_TMP, "wb");
     if (!f) return 0;
-    good = fprintf(f, "ai=%d\npromo=%d\nreports=%d\n",
-                   cfg->ai.enabled != 0, cfg->promo.enabled != 0,
+    good = fprintf(f, "promo=%d\nreports=%d\n",
+                   cfg->promo.enabled != 0,
                    cfg->stream_report.enabled != 0) > 0;
     if (fclose(f) != 0) good = 0;
     if (!good || !MoveFileExA(DASHBOARD_PREFS_TMP, DASHBOARD_PREFS,
@@ -130,23 +129,19 @@ static int status_json(char *json, size_t capacity)
     LeaveCriticalSection(&g_dashboard.lock);
     len = snprintf(json, capacity,
         "{\"live\":%s,\"viewers\":%d,\"chat\":%s,"
-        "\"ai\":%s,\"promo\":%s,\"reports\":%s,\"obs\":%s,"
+        "\"promo\":%s,\"reports\":%s,\"obs\":%s,"
         "\"queue\":%u,\"profiles\":%u,\"peak\":%d,\"uptime\":%lu,"
         "\"promo_min\":%u,\"promo_max\":%u,\"obs_connected\":%s,"
         "\"obs_recording\":%d,\"obs_streaming\":%d,"
-        "\"obs_result_seq\":%u,\"ai_suggestion_seq\":%u,\"chat_idle_seconds\":%u,\"ai_suggestion_pending\":%s,"
-        "\"ai_test_seq\":%u,\"ai_test_pending\":%s,\"ai_test_turns\":%u,\"broadcaster\":",
+        "\"obs_result_seq\":%u,\"broadcaster\":",
         s.live ? "true" : "false", s.viewers, s.chat_connected ? "true" : "false",
-        s.ai_enabled ? "true" : "false", s.promo_enabled ? "true" : "false",
-        s.reports_enabled ? "true" : "false", s.obs_enabled ? "true" : "false",
+        s.promo_enabled ? "true" : "false",
+        s.reports_enabled ? "true" : "false",
+        s.obs_enabled ? "true" : "false",
         (unsigned int)s.queue_count, (unsigned int)s.profile_count,
         s.peak_observed, s.uptime_seconds, s.promo_min, s.promo_max,
         s.obs_state.connected ? "true" : "false",
-        s.obs_state.recording, s.obs_state.streaming, s.obs_result_sequence,
-         s.ai_suggestion_sequence, s.chat_idle_seconds,
-         s.ai_suggestion_pending ? "true" : "false",
-         s.ai_test_sequence, s.ai_test_pending ? "true" : "false",
-         s.ai_test_history_count);
+        s.obs_state.recording, s.obs_state.streaming, s.obs_result_sequence);
     if (len < 0 || (size_t)len >= capacity) return 0;
     n = (size_t)len;
     if (!json_quote(json,capacity,&n,s.broadcaster) ||
@@ -156,10 +151,6 @@ static int status_json(char *json, size_t capacity)
         !json_quote(json,capacity,&n,s.title) ||
         !json_append(json,capacity,&n,",\"track\":") ||
         !json_quote(json,capacity,&n,s.track) ||
-         !json_append(json,capacity,&n,",\"ai_suggestion\":") ||
-         !json_quote(json,capacity,&n,s.ai_suggestion) ||
-        !json_append(json,capacity,&n,",\"ai_test_reply\":") ||
-        !json_quote(json,capacity,&n,s.ai_test_reply) ||
         !json_append(json,capacity,&n,",\"obs_scene\":") ||
         !json_quote(json,capacity,&n,s.obs_state.scene) ||
         !json_append(json,capacity,&n,",\"obs_result\":") ||
@@ -241,10 +232,10 @@ static int status_json(char *json, size_t capacity)
     {
         char value[250];
         snprintf(value,sizeof(value),
-                 ",\"ai_cooldown\":%u,\"normal_cooldown\":%u,"
+                 ",\"normal_cooldown\":%u,"
                  "\"game_cooldown\":%u,\"bruh_cooldown\":%u,"
                  "\"command_seq\":%u,",
-                 s.ai_cooldown,s.cooldown_normal,s.cooldown_game,
+                 s.cooldown_normal,s.cooldown_game,
                  s.cooldown_bruh,s.command_seq);
         if(!json_append(json,capacity,&n,value))return 0;
     }
@@ -486,51 +477,6 @@ static int queue_setting(const char *body)
         LeaveCriticalSection(&g_dashboard.lock);
         return 1;
     }
-    if(!strcmp(body, "action=ai_test_reset"))
-    {
-        EnterCriticalSection(&g_dashboard.lock);
-        if(p->ai_test_action)
-        {
-            LeaveCriticalSection(&g_dashboard.lock);
-            return 0;
-        }
-        p->ai_test_action=2;
-        p->ai_test_message[0]='\0';
-        LeaveCriticalSection(&g_dashboard.lock);
-        return 1;
-    }
-    if(starts_with(body,"action=ai_test&message="))
-    {
-        const char *cur=body+strlen("action=ai_test&message=");
-        char value[512];size_t n=0;
-        while(*cur)
-        {
-            unsigned char c=(unsigned char)*cur++;
-            if(c=='%')
-            {
-                int a,b;unsigned char x,y;
-                if(!cur[0]||!cur[1])return 0;
-                x=(unsigned char)cur[0];y=(unsigned char)cur[1];
-                a=(x>='0'&&x<='9')?x-'0':(x>='A'&&x<='F')?x-'A'+10:
-                  (x>='a'&&x<='f')?x-'a'+10:-1;
-                b=(y>='0'&&y<='9')?y-'0':(y>='A'&&y<='F')?y-'A'+10:
-                  (y>='a'&&y<='f')?y-'a'+10:-1;
-                if(a<0||b<0)return 0;
-                c=(unsigned char)(a*16+b);cur+=2;
-            }
-            else if(c=='+')c=' ';
-            if(c<32||c==127||n+1>=sizeof(value))return 0;
-            value[n++]=(char)c;
-        }
-        value[n]='\0';
-        if(!n)return 0;
-        EnterCriticalSection(&g_dashboard.lock);
-        if(p->ai_test_action){LeaveCriticalSection(&g_dashboard.lock);return 0;}
-        p->ai_test_action=1;
-        snprintf(p->ai_test_message,sizeof(p->ai_test_message),"%s",value);
-        LeaveCriticalSection(&g_dashboard.lock);
-        return 1;
-    }
     if(starts_with(body,"action=setting&key="))
     {
         const char *sep=strstr(body+19,"&value=");
@@ -574,7 +520,6 @@ static int queue_setting(const char *body)
         LeaveCriticalSection(&g_dashboard.lock);
         return 1;
     }
-    if (starts_with(body, "feature=ai&enabled=")) key = "ai";
     if (starts_with(body, "feature=promo&enabled=")) key = "promo";
     if (starts_with(body, "feature=reports&enabled=")) key = "reports";
     if (!key) return 0;
@@ -583,7 +528,6 @@ static int queue_setting(const char *body)
         return 0;
     on = value[0] - '0';
     EnterCriticalSection(&g_dashboard.lock);
-    if (!strcmp(key,"ai")) p->ai = on;
     if (!strcmp(key,"promo")) p->promo = on;
     if (!strcmp(key,"reports")) p->reports = on;
     LeaveCriticalSection(&g_dashboard.lock);
@@ -806,10 +750,9 @@ int dashboard_take_changes(DashboardChanges *changes)
     *changes = g_dashboard.pending;
     changes_reset(&g_dashboard.pending);
     LeaveCriticalSection(&g_dashboard.lock);
-    pending = changes->ai != -1 || changes->promo != -1 ||
+    pending = changes->promo != -1 ||
               changes->reports != -1 || changes->obs_action != 0 ||
               changes->audio_action || changes->music_action ||
-              changes->mark_moment || changes->settings_action ||
-              changes->ai_test_action;
+              changes->mark_moment || changes->settings_action;
     return pending;
 }
