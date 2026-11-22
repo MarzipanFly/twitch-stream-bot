@@ -29,9 +29,6 @@
 #include "viewer_rank.h"
 #include "music_queue.h"
 #include "music_worker.h"
-#include "ai_chat.h"
-#include "ai_manager.h"
-#include "ai_action.h"
 #include "chat_promo.h"
 #include "stream_report.h"
 #include "dashboard.h"
@@ -40,7 +37,6 @@
 #include "dashboard_stats.h"
 #include "achievements.h"
 #include "youtube_metadata.h"
-#include "cJSON.h"
 
 #include "token_store.h"
 
@@ -57,85 +53,8 @@
 
 static ViewerChallenges g_viewer_challenges;
 static int g_viewer_challenges_enabled = 0;
-/* Monotonic activity markers used by the private AI cohost. */
-static volatile LONG g_cohost_last_chat_tick = 0;
-static volatile LONG g_cohost_chat_sequence = 0;
-/* Main loop only; static to avoid >260 KiB on the Windows stack. */
+/* Pre-side-effect EventSub replay protection. */
 static EventSubDedupe g_eventsub_dedupe;
-
-static volatile LONG g_live_ai_stream_online = 0;
-/* AI Manager is observe-only and owned by the main loop. */
-static void manager_update_policy(const AppConfig *config)
-{
-    AiManagerPolicy policy = {0};
-    if (!config) return;
-    policy.enable_raid_shoutout = config->raids.auto_shoutout;
-    policy.enable_stream_report = config->stream_report.enabled;
-    ai_manager_set_policy(&policy);
-}
-
-static void manager_observe_stream_transition(int started,
-                                              const TwitchStream *stream)
-{
-    AiManagerEvent event = {0};
-    AiManagerDecision decision;
-    event.type = started ? AI_MANAGER_EVENT_STREAM_STARTED :
-                           AI_MANAGER_EVENT_STREAM_ENDED;
-    event.timestamp = (unsigned long long)time(NULL);
-    event.stream_online = started;
-    if (stream) event.viewer_count = started ? stream->viewer_count : 0;
-    (void)ai_manager_observe(&event, &decision);
-    log_info("AI Manager monitor: stream %s, proposal=%d, status=%d",
-             started ? "started" : "ended",
-             (int)decision.proposed_action, (int)decision.status);
-}
-
-/* Only record an achievement after the original handler validated the channel. */
-static void manager_observe_achievement(const char *json,
-                                        AchievementEventKind kind,
-                                        const TwitchStream *stream)
-{
-    cJSON *root;
-    const cJSON *metadata, *payload, *item, *event_object;
-    const char *id, *login, *event_id;
-    AiManagerEvent observation = {0};
-    AiManagerDecision decision;
-    if (!json || kind == ACHIEVEMENT_EVENT_NONE) return;
-    root = cJSON_Parse(json);
-    if (!root) return;
-    metadata = cJSON_GetObjectItemCaseSensitive(root, "metadata");
-    payload = cJSON_GetObjectItemCaseSensitive(root, "payload");
-    event_object = cJSON_GetObjectItemCaseSensitive(payload, "event");
-    item = cJSON_GetObjectItemCaseSensitive(metadata, "message_id");
-    event_id = cJSON_IsString(item) ? item->valuestring : NULL;
-    item = cJSON_GetObjectItemCaseSensitive(event_object,
-          kind == ACHIEVEMENT_EVENT_RAID ? "from_broadcaster_user_id" : "user_id");
-    id = cJSON_IsString(item) ? item->valuestring : NULL;
-    item = cJSON_GetObjectItemCaseSensitive(event_object,
-          kind == ACHIEVEMENT_EVENT_RAID ? "from_broadcaster_user_login" : "user_login");
-    login = cJSON_IsString(item) ? item->valuestring : NULL;
-    if (!id || !id[0] || !login || !login[0])
-    {
-        cJSON_Delete(root);
-        return;
-    }
-    observation.type = kind == ACHIEVEMENT_EVENT_RAID ?
-                       AI_MANAGER_EVENT_RAID : AI_MANAGER_EVENT_FOLLOW;
-    snprintf(observation.actor_id, sizeof(observation.actor_id), "%s", id);
-    snprintf(observation.actor_login, sizeof(observation.actor_login), "%s", login);
-    if (event_id)
-        snprintf(observation.event_id, sizeof(observation.event_id), "%s", event_id);
-    observation.timestamp = (unsigned long long)time(NULL);
-    observation.stream_online = stream ? stream->is_live : 0;
-    observation.viewer_count = stream && stream->is_live ? stream->viewer_count : 0;
-    cJSON_Delete(root);
-    (void)ai_manager_observe(&observation, &decision);
-    log_info("AI Manager monitor: %s from %s, proposal=%d, status=%d",
-             kind == ACHIEVEMENT_EVENT_RAID ? "raid" : "follow",
-             observation.actor_login,
-             (int)decision.proposed_action, (int)decision.status);
-}
-
 
 static DWORD g_last_bruh_tick = 0;
 static int g_bruh_played = 0;
@@ -2408,141 +2327,6 @@ static BotResult process_twitch_chat_notification(
         return BOT_OK;
 
 
-    /* Observe direct mentions without additional Twitch messages. */
-    if (chat_message.text[0] != config->bot.command_prefix &&
-        (strstr(chat_message.text, "Апельсин,") ||
-         strstr(chat_message.text, "апельсин,") ||
-         strstr(chat_message.text, "Апельсин?") ||
-         strstr(chat_message.text, "апельсин?") ||
-         strstr(chat_message.text, "ApelsinBot") ||
-         strstr(chat_message.text, "apelsinbot")))
-    {
-        AiManagerEvent event = {0};
-        AiManagerDecision decision;
-        event.type = AI_MANAGER_EVENT_CHAT;
-        event.direct_mention = 1;
-        event.timestamp = (unsigned long long)time(NULL);
-        snprintf(event.event_id, sizeof(event.event_id), "%s",
-                 chat_message.message_id);
-        snprintf(event.actor_id, sizeof(event.actor_id), "%s",
-                 chat_message.chatter_user_id);
-        snprintf(event.actor_login, sizeof(event.actor_login), "%s",
-                 chat_message.chatter_user_login);
-        (void)ai_manager_observe(&event, &decision);
-    }
-
-    /* Only real viewer messages reset the cohost's quiet-period timer. */
-    InterlockedExchange(&g_cohost_last_chat_tick, (LONG)GetTickCount());
-    InterlockedIncrement(&g_cohost_chat_sequence);
-
-    /*
-     * Opt-in "Live" mode: respond only to explicit mentions, never to
-     * commands or ordinary conversation. Reuse the existing AI queue and
-     * per-viewer cooldown. A global cooldown prevents chat flooding.
-     */
-    if (config->ai.enabled && config->ai.live_chat_enabled &&
-        ai_chat_running() &&
-        InterlockedCompareExchange(&g_live_ai_stream_online, 0, 0) &&
-        chat_message.text[0] != config->bot.command_prefix &&
-        (strstr(chat_message.text, "Апельсин,") ||
-         strstr(chat_message.text, "апельсин,") ||
-         strstr(chat_message.text, "Апельсин?") ||
-         strstr(chat_message.text, "апельсин?") ||
-         strstr(chat_message.text, "ApelsinBot") ||
-         strstr(chat_message.text, "apelsinbot")))
-    {
-        static DWORD last_auto_reply_tick = 0;
-        static int has_auto_replied = 0;
-        DWORD tick = GetTickCount();
-        if (!has_auto_replied ||
-            (DWORD)(tick - last_auto_reply_tick) >=
-                config->ai.live_chat_cooldown_seconds * 1000UL)
-        {
-            AiChatStatus status = ai_chat_enqueue_live(
-                &chat_message, chat_message.text, &config->twitch);
-            if (status == AI_CHAT_QUEUED)
-            {
-                last_auto_reply_tick = tick;
-                has_auto_replied = 1;
-                log_info("Live AI chat: direct mention accepted from %s",
-                         chat_message.chatter_user_login);
-            }
-        }
-    }
-
-    /* Conversational local AI command is dispatched asynchronously. */
-    if (chat_message.text[0] == config->bot.command_prefix)
-    {
-        const char *name = chat_message.text + 1;
-        size_t keyword_len = strlen("бот");
-        if (strncmp(name, "бот", keyword_len) == 0 &&
-            (name[keyword_len] == '\0' ||
-             name[keyword_len] == ' ' || name[keyword_len] == '\t'))
-        {
-            const char *question = name + keyword_len;
-            AiChatStatus status;
-            while (*question == ' ' || *question == '\t') ++question;
-            if (!config->ai.enabled || !ai_chat_running())
-                snprintf(response, sizeof(response),
-                         "🍊 ИИ-чат пока отключён.");
-            else if (!*question)
-                snprintf(response, sizeof(response),
-                         "🍊 Спроси меня так: !бот как настроение?");
-            else if (strcmp(question, "память вкл") == 0)
-            {
-                if (ai_chat_persistent_set(chat_message.chatter_user_id, 1))
-                    snprintf(response, sizeof(response),
-                             "@%.40s 🍊 Долгая память включена. Буду помнить до 4 последних диалогов между стримами (не более 30 дней). Отключить: !бот память выкл",
-                             chat_message.chatter_user_login);
-                else
-                    snprintf(response, sizeof(response),
-                             "🍊 Не удалось включить память. Проверь локальное хранилище.");
-            }
-            else if (strcmp(question, "память выкл") == 0 ||
-                     strcmp(question, "удали память") == 0)
-            {
-                if (ai_chat_persistent_set(chat_message.chatter_user_id, 0))
-                    snprintf(response, sizeof(response),
-                             "@%.40s 🍊 Долговременная память отключена, сохранённая история удалена.",
-                             chat_message.chatter_user_login);
-                else
-                    snprintf(response, sizeof(response),
-                             "🍊 Не удалось удалить локальную память. Сообщи модератору.");
-            }
-            else if (strcmp(question, "сброс") == 0 ||
-                     strcmp(question, "забудь") == 0)
-            {
-                if (ai_chat_forget(chat_message.chatter_user_id))
-                    snprintf(response, sizeof(response),
-                             "@%.40s 🍊 Историю нашего диалога очистил. Начнём с чистого листа!",
-                             chat_message.chatter_user_login);
-                else
-                    snprintf(response, sizeof(response),
-                             "🍊 Не удалось очистить историю. Попробуй позже.");
-            }
-            else
-            {
-                status = ai_chat_enqueue(&chat_message, question,
-                                         &config->twitch);
-                if (status == AI_CHAT_QUEUED || status == AI_CHAT_COOLDOWN)
-                    return BOT_OK; /* Do not spam cooldown notices. */
-                if (status == AI_CHAT_QUEUE_FULL)
-                    snprintf(response, sizeof(response),
-                             "🍊 У меня очередь вопросов, попробуй чуть позже.");
-                else if (status == AI_CHAT_TOO_LONG)
-                    snprintf(response, sizeof(response),
-                             "🍊 Слишком длинный вопрос (максимум 480 байт UTF-8).");
-                else
-                    snprintf(response, sizeof(response),
-                             "🍊 Пока не могу принять вопрос.");
-            }
-            result = twitch_chat_send_message(&config->twitch, response);
-            if (result != BOT_OK)
-                log_warning("AI command notice failed (%d)", (int)result);
-            return BOT_OK;
-        }
-    }
-
     /*
      * Configurable sound commands are checked before built-in commands.
      * Each sound has its own global cooldown.
@@ -3886,7 +3670,6 @@ static BotResult update_stream_state(
     if (*previous_live_state == 0 &&
         current_stream.is_live != 0)
     {
-        manager_observe_stream_transition(1, &current_stream);
         log_info(
             "========================================"
         );
@@ -3911,7 +3694,6 @@ static BotResult update_stream_state(
     else if (*previous_live_state != 0 &&
              current_stream.is_live == 0)
     {
-        manager_observe_stream_transition(0, &current_stream);
         log_info(
             "========================================"
         );
@@ -3939,7 +3721,6 @@ static BotResult update_stream_state(
     /* Report only confirmed Helix states, not failed polls. */
     if (!stream_report_observe(stream_report, &current_stream, time(NULL)))
         log_warning("Automatic Twitch stream report could not be updated");
-    ai_chat_set_stream_context(&current_stream);
     if (dashboard_stream)
         *dashboard_stream = current_stream;
 
@@ -3978,7 +3759,6 @@ static BotResult run_bot_loop(
     DashboardStatus dash_status = {0};
     DashboardChanges dash_changes;
     DashboardObs obs_state = {0};
-    char manager_last_obs_scene[DASH_OBS_SCENE_LENGTH] = "";
     CategorySync category_sync = {0};
     ObsDirector obs_director = {0};
     DWORD last_obs_poll = 0;
@@ -3993,8 +3773,6 @@ static BotResult run_bot_loop(
     int dashboard_peak = 0;
     char dashboard_peak_stream_id[TWITCH_STREAM_ID_SIZE] = "";
     int dashboard_running = 0;
-    LONG cohost_seen_chat_sequence = 0;
-    int cohost_suggested_this_idle = 0;
 
     BotResult result;
     BotResult chat_result;
@@ -4015,11 +3793,6 @@ static BotResult run_bot_loop(
     }
 
     memset(&g_eventsub_dedupe, 0, sizeof(g_eventsub_dedupe));
-    /* Uses a separate broadcaster token; the chat bot's OAuth session is untouched. */
-    ai_manager_init(NULL);
-    manager_update_policy(config);
-    log_info("AI Manager started in monitor-only mode");
-
     (void)category_sync_start(config, &category_sync);
     (void)obs_director_start(config, &obs_director);
 
@@ -4043,7 +3816,6 @@ static BotResult run_bot_loop(
     previous_live_state =
         initial_stream.is_live;
     dashboard_stream = initial_stream;
-    InterlockedExchange(&g_live_ai_stream_online, initial_stream.is_live ? 1 : 0);
     dashboard_peak = initial_stream.is_live ? initial_stream.viewer_count : 0;
     if (initial_stream.is_live)
         dashboard_chart_observe(&view_chart, &initial_stream);
@@ -4091,15 +3863,9 @@ static BotResult run_bot_loop(
     dashboard_running = dashboard_start(config->dashboard.enabled,
                                          (unsigned short)config->dashboard.port);
     dashboard_started_tick = GetTickCount();
-    InterlockedExchange(&g_cohost_last_chat_tick, (LONG)dashboard_started_tick);
-    cohost_seen_chat_sequence = InterlockedCompareExchange(&g_cohost_chat_sequence, 0, 0);
     obs_state.recording = -1;
     obs_state.streaming = -1;
     last_obs_poll = (DWORD)(GetTickCount() - 15000UL);
-
-    if (config->ai.enabled && !ai_chat_start(&config->ai))
-        log_warning("Local AI worker could not start; !бот disabled");
-    ai_chat_set_stream_context(&initial_stream);
 
     log_info(
         "Stream polling interval: %d seconds",
@@ -4137,55 +3903,14 @@ static BotResult run_bot_loop(
         if (dashboard_running && dashboard_take_changes(&dash_changes))
         {
             int changed = 0;
-            if (dash_changes.manager_demo_action)
-            {
-                AiManagerEvent event = {0};
-                AiManagerDecision decision;
-                static unsigned int manager_demo_sequence = 0;
-                event.type = AI_MANAGER_EVENT_RAID;
-                snprintf(event.event_id, sizeof(event.event_id),
-                         "local-demo-%u", ++manager_demo_sequence);
-                snprintf(event.actor_id, sizeof(event.actor_id),
-                         "%s", "demo_raider");
-                snprintf(event.actor_login, sizeof(event.actor_login),
-                         "%s", "demo_raider");
-                event.timestamp = (unsigned long long)time(NULL);
-                /* Deliberately simulated context, never actual stream metrics. */
-                event.stream_online = 1;
-                event.viewer_count = 12;
-                (void)ai_manager_observe(&event, &decision);
-                snprintf(command_message, sizeof(command_message),
-                         "%s", "Тестовый рейд добавлен только в AI Manager");
-                ++command_sequence;
-                log_info("AI Manager dry-run demo event accepted (no Twitch or OBS action)");
-            }
-            if (dash_changes.ai_test_action)
-            {
-                int accepted = config->ai.enabled && ai_chat_running() &&
-                    (dash_changes.ai_test_action == 2 ?
-                     ai_chat_reset_test_conversation() :
-                     ai_chat_request_test_reply(dash_changes.ai_test_message));
-                snprintf(command_message,sizeof(command_message),"%s",
-                         accepted ?
-                         (dash_changes.ai_test_action == 2 ?
-                          "История приватного тестового чата очищена" :
-                          "Тестовый ответ генерируется; в Twitch он не отправляется") :
-                         "Не удалось выполнить тест: включи ИИ или освободи очередь");
-                ++command_sequence;
-                SecureZeroMemory(dash_changes.ai_test_message,
-                                 sizeof(dash_changes.ai_test_message));
-            }
             if (dash_changes.settings_action)
             {
                 const char *key=dash_changes.settings_key;
-                unsigned int previous_cooldown=config->ai.cooldown_seconds;
                 int ok=dashboard_settings_apply(config,key,
                                                  dash_changes.settings_value);
                 if (ok)
                 {
                     command_cooldown_configure(&config->cooldowns);
-                    if(previous_cooldown!=config->ai.cooldown_seconds)
-                        ai_chat_set_cooldown(config->ai.cooldown_seconds);
                     snprintf(command_message,sizeof(command_message),
                              "%s", "Настройка сохранена и применена");
                     log_info("Dashboard setting updated: %s",key);
@@ -4199,29 +3924,6 @@ static BotResult run_bot_loop(
                 ++command_sequence;
                 SecureZeroMemory(dash_changes.settings_value,
                                  sizeof(dash_changes.settings_value));
-            }
-            if (dash_changes.ai != -1 && config->ai.enabled != dash_changes.ai)
-            {
-                if (dash_changes.ai)
-                {
-                    AiConfig new_ai_config = config->ai;
-                    new_ai_config.enabled = 1;
-                    if (ai_chat_start(&new_ai_config))
-                    {
-                        config->ai.enabled = 1;
-                        ai_chat_set_stream_context(&dashboard_stream);
-                        log_info("Dashboard enabled AI");
-                        changed = 1;
-                    }
-                    else log_warning("Dashboard: unable to start AI worker");
-                }
-                else
-                {
-                    config->ai.enabled = 0;
-                    ai_chat_stop();
-                    log_info("Dashboard disabled AI");
-                    changed = 1;
-                }
             }
             if (dash_changes.promo != -1 &&
                 config->promo.enabled != dash_changes.promo)
@@ -4373,7 +4075,6 @@ static BotResult run_bot_loop(
                 ++command_sequence;
                 last_obs_poll=(DWORD)(GetTickCount()-15000UL);
             }
-            if (changed) manager_update_policy(config);
             if (changed && !dashboard_save_preferences(config))
                 log_warning("Dashboard controls applied, but could not save to data/");
         }
@@ -4571,10 +4272,7 @@ static BotResult run_bot_loop(
                             chat_result = achievements_process_event(
                                 &config->twitch, json, achievement_kind,
                                 config->raids.auto_shoutout);
-                            if (chat_result == BOT_OK)
-                                manager_observe_achievement(
-                                    json, achievement_kind, &dashboard_stream);
-                        }
+}
                         else
                             chat_result = process_twitch_chat_notification(
                                 config, json, &chat_event);
@@ -4693,41 +4391,9 @@ static BotResult run_bot_loop(
             }
         }
 
-        ai_chat_set_current_track(
-            g_music_current_valid ? g_music_current.title : NULL);
         now = GetTickCount();
         category_sync_tick(config, &category_sync);
         obs_director_tick(config, &obs_director);
-        ai_chat_set_obs_context(
-            obs_director.state_known ? obs_director.last_seen_scene : NULL,
-            obs_director.last_detected_process[0] ?
-                obs_director.last_detected_process : NULL);
-
-        /* Offer at most one private suggestion during each viewer-chat quiet period. */
-        {
-            LONG chat_sequence = InterlockedCompareExchange(
-                &g_cohost_chat_sequence, 0, 0);
-            DWORD last_chat_tick = (DWORD)InterlockedCompareExchange(
-                &g_cohost_last_chat_tick, 0, 0);
-            if (chat_sequence != cohost_seen_chat_sequence)
-            {
-                cohost_seen_chat_sequence = chat_sequence;
-                cohost_suggested_this_idle = 0;
-            }
-            if (!dashboard_stream.is_live || !chat_connected ||
-                !config->ai.enabled || !ai_chat_running())
-                cohost_suggested_this_idle = 0;
-            else if (!cohost_suggested_this_idle &&
-                     (DWORD)(now - last_chat_tick) >= 90000UL)
-            {
-                if (ai_chat_request_cohost_suggestion())
-                {
-                    cohost_suggested_this_idle = 1;
-                    log_info("AI cohost: chat quiet for 90 seconds; requesting a private topic suggestion");
-                }
-            }
-        }
-
         /*
          * ----------------------------------------------------
          * PERIODIC OAUTH VALIDATION
@@ -4812,22 +4478,6 @@ static BotResult run_bot_loop(
                 obs_state.recording = -1;
                 obs_state.streaming = -1;
             }
-            if (obs_state.connected && obs_state.scene[0])
-            {
-                if (manager_last_obs_scene[0] &&
-                    strcmp(manager_last_obs_scene, obs_state.scene) != 0)
-                {
-                    AiManagerEvent event = {0};
-                    AiManagerDecision decision;
-                    event.type = AI_MANAGER_EVENT_OBS_CHANGED;
-                    event.timestamp = (unsigned long long)time(NULL);
-                    (void)ai_manager_observe(&event, &decision);
-                    log_info("AI Manager monitor: OBS scene changed, proposal=%d",
-                             (int)decision.proposed_action);
-                }
-                snprintf(manager_last_obs_scene,
-                         sizeof(manager_last_obs_scene), "%s", obs_state.scene);
-            }
             last_obs_poll = GetTickCount();
         }
 
@@ -4841,73 +4491,13 @@ static BotResult run_bot_loop(
         if (dashboard_running)
         {
             memset(&dash_status, 0, sizeof(dash_status));
-            InterlockedExchange(&g_live_ai_stream_online,
-                                dashboard_stream.is_live ? 1 : 0);
             dash_status.live = dashboard_stream.is_live;
             dash_status.viewers = dashboard_stream.is_live ?
                                   dashboard_stream.viewer_count : 0;
             dash_status.chat_connected = chat_connected;
-            dash_status.ai_enabled = config->ai.enabled && ai_chat_running();
-            {
-                DWORD last_chat_tick = (DWORD)InterlockedCompareExchange(
-                    &g_cohost_last_chat_tick, 0, 0);
-                dash_status.chat_idle_seconds =
-                    (DWORD)(GetTickCount() - last_chat_tick) / 1000UL;
-                ai_chat_get_cohost_suggestion(
-                    dash_status.ai_suggestion,
-                    sizeof(dash_status.ai_suggestion),
-                    &dash_status.ai_suggestion_sequence,
-                    &dash_status.ai_suggestion_pending);
-                ai_chat_get_test_reply(
-                    dash_status.ai_test_reply,
-                    sizeof(dash_status.ai_test_reply),
-                    &dash_status.ai_test_sequence,
-                    &dash_status.ai_test_pending,
-                    &dash_status.ai_test_history_count);
-            }
             dash_status.promo_enabled = config->promo.enabled;
             dash_status.reports_enabled = config->stream_report.enabled;
             dash_status.raid_shoutout_enabled = config->raids.auto_shoutout;
-            ai_manager_get_status(&dash_status.manager_status);
-            dash_status.manager_history_count =
-                ai_manager_get_history(dash_status.manager_history,
-                                       DASHBOARD_MANAGER_EVENTS);
-            /* Dry-run previews use a trusted CURRENT application snapshot.
-             * No unverified role or cooldown state is ever treated as granted.
-             * This is not historical execution telemetry. */
-            {
-                AiActionContext guard = {0};
-                size_t manager_index;
-                guard.stream_online = dashboard_stream.is_live;
-                guard.shoutout_enabled = config->raids.auto_shoutout;
-                guard.shoutout_scope_granted =
-                    config->twitch.shoutout_scope_granted;
-                guard.moderator_authorized =
-                    config->twitch.bot_user_id[0] &&
-                    strcmp(config->twitch.bot_user_id,
-                           config->twitch.broadcaster_id) == 0;
-                /* Twitch moderator role and per-target cooldown are not
-                 * verified yet; keep both cooldown flags false. */
-                guard.ai_enabled = config->ai.enabled;
-                guard.obs_available = obs_state.connected;
-                guard.now_seconds = (unsigned long long)time(NULL);
-                dash_status.manager_preview_allowed = 0;
-                dash_status.manager_preview_blocked = 0;
-                for (manager_index = 0;
-                     manager_index < dash_status.manager_history_count;
-                     ++manager_index)
-                {
-                    AiActionPreview *preview =
-                        &dash_status.manager_previews[manager_index];
-                    ai_action_preview(
-                        &dash_status.manager_history[manager_index],
-                        &guard, preview);
-                    if (preview->status == AI_ACTION_PREVIEW_ALLOWED)
-                        ++dash_status.manager_preview_allowed;
-                    else if (preview->status == AI_ACTION_PREVIEW_BLOCKED)
-                        ++dash_status.manager_preview_blocked;
-                }
-            }
             dash_status.obs_enabled = config->obs.enabled;
             dash_status.obs_config_enabled = config->obs.enabled;
             dash_status.category_sync_enabled = config->category_sync.enabled;
@@ -4962,7 +4552,6 @@ static BotResult run_bot_loop(
             snprintf(dash_status.telegram_chat_id,
                      sizeof(dash_status.telegram_chat_id),"%s",
                      config->telegram.chat_id);
-            dash_status.ai_cooldown=config->ai.cooldown_seconds;
             dash_status.cooldown_normal=config->cooldowns.normal_seconds;
             dash_status.cooldown_game=config->cooldowns.game_seconds;
             dash_status.cooldown_bruh=config->cooldowns.bruh_seconds;
@@ -5080,7 +4669,6 @@ static BotResult run_bot_loop(
     obs_director_stop(&obs_director);
     category_sync_stop(&category_sync);
     dashboard_stop();
-    ai_chat_stop();
 
     twitch_eventsub_ws_close(
         &websocket
