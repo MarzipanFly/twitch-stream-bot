@@ -4,9 +4,12 @@
  *     src/dashboard_server.c src/logger.c -lws2_32 -o test_dashboard.exe
  * Then run test_dashboard.exe; it uses tests/.tmp_dashboard, not real data/.
  */
-#include "dashboard.h"
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include "dashboard.h"
 #include <windows.h>
 #include <direct.h>
 #include <assert.h>
