@@ -1,11 +1,15 @@
 /* Native WinSock loopback dashboard for ApelsinBot (pure C / MinGW).
  * Never bind to 0.0.0.0; only serve a static local page and tiny JSON API.
  */
-#include "dashboard.h"
-#include "logger.h"
-
+/* WinSock2 must not coexist with legacy winsock.h from windows.h. */
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
+
+#include "dashboard.h"
+#include "logger.h"
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
