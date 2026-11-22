@@ -1,3 +1,8 @@
+/* Avoid Windows' obsolete winsock.h when other modules use WinSock2. */
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
 #include "app.h"
 
 #include "viewer_profile.h"
