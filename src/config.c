@@ -14,7 +14,6 @@ typedef enum
 	SECTION_DISCORD,
     SECTION_BOT,
     SECTION_OBS,
-    SECTION_AI,
     SECTION_PROMO,
     SECTION_RAIDS,
     SECTION_STREAM_REPORT,
@@ -97,7 +96,6 @@ static ConfigSection parse_section(
 	}
 
     if (strcmp(line, "[obs]") == 0) return SECTION_OBS;
-    if (strcmp(line, "[ai]") == 0) return SECTION_AI;
     if (strcmp(line, "[promo]") == 0) return SECTION_PROMO;
     if (strcmp(line, "[raids]") == 0) return SECTION_RAIDS;
     if (strcmp(line, "[stream_report]") == 0) return SECTION_STREAM_REPORT;
@@ -272,39 +270,6 @@ static void parse_key_value(
                 config->obs.enabled = strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
             else if (strcmp(key, "password") == 0)
                 copy_string(config->obs.password, sizeof(config->obs.password), value);
-            break;
-
-        case SECTION_AI:
-            if (strcmp(key, "enabled") == 0)
-                config->ai.enabled =
-                    strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
-            else if (strcmp(key, "model") == 0)
-                copy_string(config->ai.model, sizeof(config->ai.model), value);
-            else if (strcmp(key, "live_chat_enabled") == 0)
-                config->ai.live_chat_enabled =
-                    strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
-            else if (strcmp(key, "live_chat_cooldown_seconds") == 0)
-            {
-                unsigned int seconds = 0;
-                char extra;
-                if (sscanf(value, "%u %c", &seconds, &extra) == 1 &&
-                    seconds >= 60 && seconds <= 3600)
-                    config->ai.live_chat_cooldown_seconds = seconds;
-            }
-            else if (strcmp(key, "semantic_enabled") == 0)
-                config->ai.semantic_enabled =
-                    strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
-            else if (strcmp(key, "semantic_model") == 0)
-                copy_string(config->ai.semantic_model,
-                            sizeof(config->ai.semantic_model), value);
-            else if (strcmp(key, "cooldown_seconds") == 0)
-            {
-                unsigned int seconds = 0;
-                char extra;
-                if (sscanf(value, "%u %c", &seconds, &extra) == 1 &&
-                    seconds >= 5 && seconds <= 300)
-                    config->ai.cooldown_seconds = seconds;
-            }
             break;
 
         case SECTION_PROMO:
@@ -549,13 +514,6 @@ BotResult config_load(
     );
 
     config->bot.command_prefix = '!';
-    snprintf(config->ai.model, sizeof(config->ai.model), "%s", "apelsinbot");
-    config->ai.cooldown_seconds = 30;
-    config->ai.live_chat_enabled = 0;
-    config->ai.live_chat_cooldown_seconds = 180;
-    config->ai.semantic_enabled = 0;
-    snprintf(config->ai.semantic_model, sizeof(config->ai.semantic_model),
-             "%s", "qwen3-embedding:0.6b");
     config->promo.enabled = 1;
     config->promo.min_minutes = 5;
     config->promo.max_minutes = 10;

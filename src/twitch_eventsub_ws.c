@@ -1,4 +1,5 @@
 #include "twitch_eventsub_ws.h"
+#include "twitch_eventsub.h"
 
 #include "http_client.h"
 #include "logger.h"
@@ -103,8 +104,9 @@ static BotResult load_websocket_api(
     return BOT_OK;
 }
 
-BotResult twitch_eventsub_ws_connect(
-    TwitchEventSubWebSocket *client
+static BotResult twitch_eventsub_ws_connect_path(
+    TwitchEventSubWebSocket *client,
+    const wchar_t *request_path
 )
 {
     DWORD status_code = 0;
@@ -162,7 +164,7 @@ BotResult twitch_eventsub_ws_connect(
     client->request = WinHttpOpenRequest(
         client->connection,
         L"GET",
-        TWITCH_EVENTSUB_PATH,
+        request_path,
         NULL,
         WINHTTP_NO_REFERER,
         WINHTTP_DEFAULT_ACCEPT_TYPES,
@@ -265,6 +267,28 @@ BotResult twitch_eventsub_ws_connect(
     );
 
     return BOT_OK;
+}
+
+BotResult twitch_eventsub_ws_connect(TwitchEventSubWebSocket *client)
+{
+    return twitch_eventsub_ws_connect_path(client, TWITCH_EVENTSUB_PATH);
+}
+
+BotResult twitch_eventsub_ws_connect_reconnect(
+    TwitchEventSubWebSocket *client, const char *reconnect_url
+)
+{
+    char path[TWITCH_EVENTSUB_URL_SIZE];
+    wchar_t wide_path[TWITCH_EVENTSUB_URL_SIZE];
+    if (!client || !twitch_eventsub_reconnect_path(
+            reconnect_url, path, sizeof(path)))
+        return BOT_ERR_CONFIG;
+    if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1,
+                             wide_path,
+                             (int)(sizeof(wide_path)/sizeof(wide_path[0]))))
+        return BOT_ERR_CONFIG;
+    /* Keep signed query exactly as provided. Never log it. */
+    return twitch_eventsub_ws_connect_path(client, wide_path);
 }
 
 BotResult twitch_eventsub_ws_receive(

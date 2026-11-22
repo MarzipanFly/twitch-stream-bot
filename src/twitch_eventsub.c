@@ -32,6 +32,116 @@ static void copy_json_string(
     );
 }
 
+BotResult twitch_eventsub_get_message_id(
+    const char *json,
+    char *message_id,
+    size_t capacity
+)
+{
+    cJSON *root;
+    const cJSON *metadata, *id;
+    size_t length;
+
+    if (!json || !message_id || capacity < 2)
+        return BOT_ERR_CONFIG;
+    message_id[0] = '\0';
+    root = cJSON_Parse(json);
+    if (!root)
+        return BOT_ERR_JSON;
+    metadata = cJSON_GetObjectItemCaseSensitive(root, "metadata");
+    id = cJSON_GetObjectItemCaseSensitive(metadata, "message_id");
+    if (!cJSON_IsString(id) || !id->valuestring || !id->valuestring[0])
+    {
+        cJSON_Delete(root);
+        return BOT_ERR_JSON;
+    }
+    length = strlen(id->valuestring);
+    if (length >= capacity)
+    {
+        cJSON_Delete(root);
+        return BOT_ERR_JSON;
+    }
+    memcpy(message_id, id->valuestring, length + 1);
+    cJSON_Delete(root);
+    return BOT_OK;
+}
+
+/* A reconnect URL has a signed query. Never send it to another host,
+ * log it, truncate it, or replace any query parameter. */
+int twitch_eventsub_reconnect_path(
+    const char *reconnect_url, char *path, size_t capacity
+)
+{
+    static const char prefix[] = "wss://eventsub.wss.twitch.tv";
+    const char *tail;
+    size_t length, i, prefix_len = sizeof(prefix) - 1;
+    if (!reconnect_url || !path || capacity < 4)
+        return 0;
+    path[0] = '\0';
+    if (strncmp(reconnect_url, prefix, prefix_len) != 0)
+        return 0;
+    tail = reconnect_url + prefix_len;
+    if (*tail != '/' && *tail != '?')
+        return 0;
+    length = strlen(tail);
+    if (length + (*tail == '?' ? 2U : 1U) > capacity)
+        return 0;
+    for (i = 0; i < length; ++i)
+    {
+        unsigned char ch = (unsigned char)tail[i];
+        if (ch < 0x21 || ch > 0x7e ||
+            ch == '#' || ch == '@' || ch == '\\')
+            return 0;
+    }
+    if (*tail == '?')
+    {
+        path[0] = '/';  /* HTTP path for an omitted path is '/'. */
+        memcpy(path + 1, tail, length + 1);
+    }
+    else
+        memcpy(path, tail, length + 1);
+    return 1;
+}
+
+BotResult twitch_eventsub_parse_reconnect_url(
+    const char *json, char *reconnect_url, size_t capacity
+)
+{
+    cJSON *root;
+    const cJSON *payload, *session, *url;
+    size_t length;
+    char candidate[TWITCH_EVENTSUB_URL_SIZE];
+    if (!json || !reconnect_url || capacity < 2)
+        return BOT_ERR_CONFIG;
+    reconnect_url[0] = '\0';
+    root = cJSON_Parse(json);
+    if (!root)
+        return BOT_ERR_JSON;
+    payload = cJSON_GetObjectItemCaseSensitive(root, "payload");
+    session = cJSON_GetObjectItemCaseSensitive(payload, "session");
+    url = cJSON_GetObjectItemCaseSensitive(session, "reconnect_url");
+    if (!cJSON_IsString(url) || !url->valuestring)
+    {
+        cJSON_Delete(root);
+        return BOT_ERR_JSON;
+    }
+    length = strlen(url->valuestring);
+    if (!length || length >= capacity)
+    {
+        cJSON_Delete(root);
+        return BOT_ERR_JSON;
+    }
+    memcpy(reconnect_url, url->valuestring, length + 1);
+    cJSON_Delete(root);
+    if (!twitch_eventsub_reconnect_path(
+            reconnect_url, candidate, sizeof(candidate)))
+    {
+        reconnect_url[0] = '\0';
+        return BOT_ERR_JSON;
+    }
+    return BOT_OK;
+}
+
 BotResult twitch_eventsub_get_message_type(
     const char *json,
     TwitchEventSubMessageType *type

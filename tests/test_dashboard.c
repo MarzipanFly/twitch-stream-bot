@@ -4,9 +4,12 @@
  *     src/dashboard_server.c src/logger.c -lws2_32 -o test_dashboard.exe
  * Then run test_dashboard.exe; it uses tests/.tmp_dashboard, not real data/.
  */
-#include "dashboard.h"
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include "dashboard.h"
 #include <windows.h>
 #include <direct.h>
 #include <assert.h>
@@ -89,12 +92,6 @@ int main(void)
         "X-Apelsin-Local: 1\r\n"
         "Content-Type: application/x-www-form-urlencoded\r\n"
         "Content-Length: 13\r\n\r\naction=moment";
-    const char *manager_demo =
-        "POST /api/control HTTP/1.1\r\n"
-        "Host: 127.0.0.1:18765\r\nOrigin: http://127.0.0.1:18765\r\n"
-        "X-Apelsin-Local: 1\r\n"
-        "Content-Type: application/x-www-form-urlencoded\r\n"
-        "Content-Length: 19\r\n\r\naction=manager_demo";
     const char *raid_toggle =
         "POST /api/control HTTP/1.1\r\n"
         "Host: 127.0.0.1:18765\r\nOrigin: http://127.0.0.1:18765\r\n"
@@ -108,14 +105,13 @@ int main(void)
     _mkdir("tests/.tmp_dashboard");
     assert(_chdir("tests/.tmp_dashboard")==0);
     _mkdir("data");
-    config.ai.enabled=1;
     config.promo.enabled=1;
     config.stream_report.enabled=0;
     config.raids.auto_shoutout=1;
     assert(dashboard_save_preferences(&config));
     memset(&config,0,sizeof(config));
     dashboard_load_preferences(&config);
-    assert(config.ai.enabled==1 && config.promo.enabled==1);
+    assert(config.promo.enabled==1);
     assert(config.stream_report.enabled==0);
     assert(config.raids.auto_shoutout==1);
 
@@ -127,22 +123,6 @@ int main(void)
     strcpy(data.title,"Играю с <друзьями> & веселюсь");
     data.obs_enabled=1;
     data.raid_shoutout_enabled=1;
-    data.manager_status.monitor_only=1;
-    data.manager_status.observed_events=3;
-    data.manager_status.proposed_actions=1;
-    data.manager_preview_allowed=0;
-    data.manager_preview_blocked=1;
-    data.manager_previews[0].status=AI_ACTION_PREVIEW_BLOCKED;
-    data.manager_previews[0].reason=AI_ACTION_GUARD_OFFLINE;
-    data.manager_previews[0].executed=0;
-    data.manager_history_count=1;
-    data.manager_history[0].sequence=3;
-    data.manager_history[0].event_type=AI_MANAGER_EVENT_RAID;
-    data.manager_history[0].proposed_action=AI_MANAGER_ACTION_SHOUTOUT;
-    data.manager_history[0].status=AI_MANAGER_DECISION_PROPOSED;
-    strcpy(data.manager_history[0].actor_login,"raider<test>");
-    strcpy(data.manager_history[0].reason,"Proposed Shoutout");
-
     data.obs_state.connected=1;
     data.obs_state.recording=1;
     data.obs_state.streaming=1;
@@ -151,7 +131,6 @@ int main(void)
     strcpy(data.obs_state.audio[0].name,"Mic/Aux");
     data.obs_state.audio[0].volume=0.65;
     data.obs_state.audio[0].muted=0;
-    data.ai_cooldown=30;
     data.cooldown_normal=10;
     data.cooldown_game=5;
     data.cooldown_bruh=15;
@@ -178,18 +157,6 @@ int main(void)
     assert(strstr(buffer,"\"viewers\":8"));
     assert(strstr(buffer,"\"profiles\":17"));
     assert(strstr(buffer,"\"raids\":true"));
-    assert(strstr(buffer,"\"ai_manager\":{"));
-    assert(strstr(buffer,"\"monitor_only\":true"));
-    assert(strstr(buffer,"\"observed\":3"));
-    assert(strstr(buffer,"\"proposed\":1"));
-    assert(strstr(buffer,"\"preview_allowed\":0"));
-    assert(strstr(buffer,"\"preview_blocked\":1"));
-    assert(strstr(buffer,"\"preview\":2"));
-    assert(strstr(buffer,"\"guard\":4"));
-    assert(strstr(buffer,"\"executed\":false"));
-    assert(strstr(buffer,"\"decisions\":[{"));
-    assert(strstr(buffer,"raider<test>"));
-    assert(strstr(buffer,"Proposed Shoutout"));
     assert(!strstr(buffer,"access_token"));
     assert(strstr(buffer,"\"obs_connected\":true"));
     assert(strstr(buffer,"\"obs_recording\":1"));
@@ -217,19 +184,13 @@ int main(void)
     request(same_site,buffer,sizeof(buffer));
     assert(strstr(buffer,"202 Accepted"));
     assert(dashboard_take_changes(&change));
-    assert(change.reports==0 && change.ai==-1 && change.promo==-1);
+    assert(change.reports==0 && change.promo==-1);
     assert(!dashboard_take_changes(&change));
 
     request(raid_toggle,buffer,sizeof(buffer));
     assert(strstr(buffer,"202 Accepted"));
     assert(dashboard_take_changes(&change));
-    assert(change.raids==0 && change.ai==-1 && change.promo==-1);
-    assert(!dashboard_take_changes(&change));
-
-    request(manager_demo,buffer,sizeof(buffer));
-    assert(strstr(buffer,"202 Accepted"));
-    assert(dashboard_take_changes(&change));
-    assert(change.manager_demo_action==1);
+    assert(change.raids==0 && change.promo==-1);
     assert(!dashboard_take_changes(&change));
 
     request(scene_change,buffer,sizeof(buffer));

@@ -2,6 +2,7 @@
 #define TWITCH_EVENTSUB_H
 
 #include "bot_result.h"
+#include <stddef.h>
 
 #define TWITCH_EVENTSUB_ID_SIZE       128
 #define TWITCH_EVENTSUB_LOGIN_SIZE    128
@@ -41,6 +42,14 @@ typedef struct
 
 } TwitchChatMessage;
 
+/* Strictly extract EventSub metadata.message_id, never truncate it.
+ * Caller must check this before any side effects. */
+BotResult twitch_eventsub_get_message_id(
+    const char *json,
+    char *message_id,
+    size_t capacity
+);
+
 BotResult twitch_eventsub_get_message_type(
     const char *json,
     TwitchEventSubMessageType *type
@@ -49,6 +58,15 @@ BotResult twitch_eventsub_get_message_type(
 BotResult twitch_eventsub_parse_welcome(
     const char *json,
     TwitchEventSubSession *session
+);
+
+/* Parse Twitch-supplied reconnect URL. The URL must stay on the trusted
+ * EventSub host; path retains original query string. */
+BotResult twitch_eventsub_parse_reconnect_url(
+    const char *json, char *reconnect_url, size_t capacity
+);
+int twitch_eventsub_reconnect_path(
+    const char *reconnect_url, char *path, size_t capacity
 );
 
 BotResult twitch_eventsub_parse_chat_message(
