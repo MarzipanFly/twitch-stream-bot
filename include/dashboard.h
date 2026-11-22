@@ -2,15 +2,12 @@
 #define DASHBOARD_H
 
 #include "config.h"
-#include "ai_manager.h"
-#include "ai_action.h"
 #include "dashboard_obs.h"
 #include "dashboard_stats.h"
 #include "music_queue.h"
 #include <stddef.h>
 
 #define DASHBOARD_LEADERS 5
-#define DASHBOARD_MANAGER_EVENTS 8
 typedef struct {
     char name[128];
     long long balance;
@@ -19,20 +16,13 @@ typedef struct {
 /* Snapshot supplied by the bot main loop; no private Twitch tokens. */
 typedef struct
 {
-    int live, viewers, chat_connected, ai_enabled, promo_enabled;
+    int live, viewers, chat_connected, promo_enabled;
     int raid_shoutout_enabled;
     int reports_enabled, obs_enabled, peak_observed;
     unsigned int promo_min, promo_max;
     size_t queue_count, profile_count;
     unsigned long uptime_seconds;
     char broadcaster[128], game[256], title[512], track[256];
-    char ai_suggestion[512];
-    unsigned int ai_suggestion_sequence, chat_idle_seconds;
-    int ai_suggestion_pending;
-    char ai_test_reply[800];
-    unsigned int ai_test_sequence;
-    unsigned int ai_test_history_count;
-    int ai_test_pending;
     DashboardObs obs_state;
     DashboardLeader leaders[DASHBOARD_LEADERS];
     size_t leader_count;
@@ -40,7 +30,7 @@ typedef struct
     char obs_result[160];
     char telegram_url[CONFIG_STRING_SIZE],discord_url[CONFIG_STRING_SIZE];
     char telegram_chat_id[CONFIG_STRING_SIZE];
-    unsigned int ai_cooldown, cooldown_normal, cooldown_game, cooldown_bruh;
+    unsigned int cooldown_normal, cooldown_game, cooldown_bruh;
     /* Editable integration settings exposed to the loopback-only settings page. */
     int obs_config_enabled, category_sync_enabled, obs_director_enabled;
     int director_auto_game, director_auto_chat;
@@ -59,17 +49,11 @@ typedef struct
     char reports_history[1400];
     unsigned int command_seq;
     char command_result[200];
-    AiManagerStatus manager_status;
-    AiManagerDecision manager_history[DASHBOARD_MANAGER_EVENTS];
-    AiActionPreview manager_previews[DASHBOARD_MANAGER_EVENTS];
-    size_t manager_history_count;
-    unsigned int manager_preview_allowed;
-    unsigned int manager_preview_blocked;
 } DashboardStatus;
 
 typedef struct
 {
-    int ai, promo, reports, raids; /* -1 = unchanged, 0 = disable, 1 = enable */
+    int promo, reports, raids; /* -1 = unchanged, 0 = disable, 1 = enable */
     int obs_action;  /* 0: none; 1: scene, 2: start record, 3: stop record */
     char obs_scene[DASH_OBS_SCENE_LENGTH];
     int audio_action; /* 0 none, 1 set volume, 2 mute */
@@ -78,9 +62,6 @@ typedef struct
     double audio_volume;
     int music_action; /* 1 skip current; 2 clear upcoming */
     int mark_moment;
-    int manager_demo_action; /* 1 = observe synthetic raid; no live side effects */
-    int ai_test_action;
-    char ai_test_message[512];
     int settings_action;
     char settings_key[80];
     char settings_value[CONFIG_STRING_SIZE];
