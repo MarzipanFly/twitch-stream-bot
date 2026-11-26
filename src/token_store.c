@@ -11,6 +11,7 @@
 
 #define TOKEN_STORE_FILE "data/twitch_tokens.dat"
 #define TOKEN_STORE_BROADCAST_FILE "data/twitch_broadcast_tokens.dat"
+#define TOKEN_STORE_CHANNEL_POINTS_FILE "data/twitch_channel_points_tokens.dat"
 #define TOKEN_STORE_MAGIC   0x4B544254UL
 #define TOKEN_STORE_VERSION 1UL
 
@@ -200,6 +201,11 @@ BotResult token_store_save(const TwitchAuthToken *token)
 BotResult token_store_save_broadcast(const TwitchAuthToken *token)
 {
     return token_store_save_to(TOKEN_STORE_BROADCAST_FILE, token);
+}
+
+BotResult token_store_save_channel_points(const TwitchAuthToken *token)
+{
+    return token_store_save_to(TOKEN_STORE_CHANNEL_POINTS_FILE, token);
 }
 
 static BotResult token_store_load_from(
@@ -434,6 +440,11 @@ BotResult token_store_load_broadcast(TwitchAuthToken *token)
     return token_store_load_from(TOKEN_STORE_BROADCAST_FILE, token);
 }
 
+BotResult token_store_load_channel_points(TwitchAuthToken *token)
+{
+    return token_store_load_from(TOKEN_STORE_CHANNEL_POINTS_FILE, token);
+}
+
 static BotResult token_store_delete_from(const char *filename)
 {
     DWORD attributes;
@@ -472,4 +483,9 @@ BotResult token_store_delete(void)
 BotResult token_store_delete_broadcast(void)
 {
     return token_store_delete_from(TOKEN_STORE_BROADCAST_FILE);
+}
+
+BotResult token_store_delete_channel_points(void)
+{
+    return token_store_delete_from(TOKEN_STORE_CHANNEL_POINTS_FILE);
 }

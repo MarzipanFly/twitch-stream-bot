@@ -374,3 +374,75 @@ BotResult twitch_eventsub_parse_chat_message(
     cJSON_Delete(root);
     return BOT_OK;
 }
+
+static int copy_json_string_strict(char *destination, size_t destination_size,
+                                   const cJSON *json, int required)
+{
+    size_t length;
+    if (!destination || destination_size == 0) return 0;
+    destination[0] = '\0';
+    if (!json || cJSON_IsNull(json)) return !required;
+    if (!cJSON_IsString(json) || !json->valuestring) return 0;
+    length = strlen(json->valuestring);
+    if (length >= destination_size) return 0;
+    memcpy(destination, json->valuestring, length + 1);
+    return !required || length > 0;
+}
+
+BotResult twitch_eventsub_parse_channel_points_redemption(
+    const char *json, TwitchChannelPointsRedemption *redemption)
+{
+    cJSON *root = NULL;
+    const cJSON *payload, *subscription, *subscription_type;
+    const cJSON *event, *reward, *cost;
+    if (!json || !redemption) return BOT_ERR_CONFIG;
+    memset(redemption, 0, sizeof(*redemption));
+    root = cJSON_Parse(json);
+    if (!root) return BOT_ERR_JSON;
+    payload = cJSON_GetObjectItemCaseSensitive(root, "payload");
+    subscription = cJSON_GetObjectItemCaseSensitive(payload, "subscription");
+    subscription_type = cJSON_GetObjectItemCaseSensitive(subscription, "type");
+    if (!cJSON_IsString(subscription_type) ||
+        strcmp(subscription_type->valuestring,
+               "channel.channel_points_custom_reward_redemption.add") != 0)
+    {
+        cJSON_Delete(root);
+        return BOT_ERR_TWITCH;
+    }
+    event = cJSON_GetObjectItemCaseSensitive(payload, "event");
+    reward = cJSON_GetObjectItemCaseSensitive(event, "reward");
+    cost = cJSON_GetObjectItemCaseSensitive(reward, "cost");
+    if (!cJSON_IsObject(event) || !cJSON_IsObject(reward) ||
+        !cJSON_IsNumber(cost) || cost->valuedouble < 0.0 ||
+        cost->valuedouble > 2147483647.0)
+    {
+        cJSON_Delete(root);
+        return BOT_ERR_JSON;
+    }
+    if (!copy_json_string_strict(redemption->redemption_id, sizeof(redemption->redemption_id),
+            cJSON_GetObjectItemCaseSensitive(event, "id"), 1) ||
+        !copy_json_string_strict(redemption->broadcaster_user_id, sizeof(redemption->broadcaster_user_id),
+            cJSON_GetObjectItemCaseSensitive(event, "broadcaster_user_id"), 1) ||
+        !copy_json_string_strict(redemption->broadcaster_user_login, sizeof(redemption->broadcaster_user_login),
+            cJSON_GetObjectItemCaseSensitive(event, "broadcaster_user_login"), 1) ||
+        !copy_json_string_strict(redemption->user_id, sizeof(redemption->user_id),
+            cJSON_GetObjectItemCaseSensitive(event, "user_id"), 1) ||
+        !copy_json_string_strict(redemption->user_login, sizeof(redemption->user_login),
+            cJSON_GetObjectItemCaseSensitive(event, "user_login"), 1) ||
+        !copy_json_string_strict(redemption->user_name, sizeof(redemption->user_name),
+            cJSON_GetObjectItemCaseSensitive(event, "user_name"), 1) ||
+        !copy_json_string_strict(redemption->reward_id, sizeof(redemption->reward_id),
+            cJSON_GetObjectItemCaseSensitive(reward, "id"), 1) ||
+        !copy_json_string_strict(redemption->reward_title, sizeof(redemption->reward_title),
+            cJSON_GetObjectItemCaseSensitive(reward, "title"), 1) ||
+        !copy_json_string_strict(redemption->user_input, sizeof(redemption->user_input),
+            cJSON_GetObjectItemCaseSensitive(event, "user_input"), 0))
+    {
+        cJSON_Delete(root);
+        memset(redemption, 0, sizeof(*redemption));
+        return BOT_ERR_JSON;
+    }
+    redemption->reward_cost = cost->valueint;
+    cJSON_Delete(root);
+    return BOT_OK;
+}

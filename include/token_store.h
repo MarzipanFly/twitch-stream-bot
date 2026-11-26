@@ -16,6 +16,10 @@ BotResult token_store_save_broadcast(const TwitchAuthToken *token);
 BotResult token_store_load_broadcast(TwitchAuthToken *token);
 BotResult token_store_delete_broadcast(void);
 
+BotResult token_store_save_channel_points(const TwitchAuthToken *token);
+BotResult token_store_load_channel_points(TwitchAuthToken *token);
+BotResult token_store_delete_channel_points(void);
+
 BotResult token_store_delete(void);
 
 #endif

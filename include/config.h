@@ -120,6 +120,12 @@ typedef struct
     int enabled;
 } StreamReportConfig;
 
+typedef struct
+{
+    int enabled;
+    int announce_redemptions;
+} ChannelPointsConfig;
+
 /* Loopback-only Web dashboard; disabled when local port is unavailable. */
 typedef struct
 {
@@ -156,6 +162,7 @@ typedef struct
     PromoConfig promo;
     RaidConfig raids;
     StreamReportConfig stream_report;
+    ChannelPointsConfig channel_points;
     DashboardConfig dashboard;
     CooldownConfig cooldowns;
     SoundConfig sounds[SOUND_MAX_COUNT];
