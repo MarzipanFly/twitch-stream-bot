@@ -9,6 +9,8 @@
 #define TWITCH_EVENTSUB_NAME_SIZE     128
 #define TWITCH_EVENTSUB_MESSAGE_SIZE  1024
 #define TWITCH_EVENTSUB_URL_SIZE      1024
+#define TWITCH_EVENTSUB_REWARD_TITLE_SIZE 256
+#define TWITCH_EVENTSUB_USER_INPUT_SIZE   512
 
 typedef enum
 {
@@ -29,6 +31,20 @@ typedef struct
 
 typedef struct
 {
+    char redemption_id[TWITCH_EVENTSUB_ID_SIZE];
+    char broadcaster_user_id[TWITCH_EVENTSUB_ID_SIZE];
+    char broadcaster_user_login[TWITCH_EVENTSUB_LOGIN_SIZE];
+    char user_id[TWITCH_EVENTSUB_ID_SIZE];
+    char user_login[TWITCH_EVENTSUB_LOGIN_SIZE];
+    char user_name[TWITCH_EVENTSUB_NAME_SIZE];
+    char reward_id[TWITCH_EVENTSUB_ID_SIZE];
+    char reward_title[TWITCH_EVENTSUB_REWARD_TITLE_SIZE];
+    char user_input[TWITCH_EVENTSUB_USER_INPUT_SIZE];
+    int reward_cost;
+} TwitchChannelPointsRedemption;
+
+typedef struct
+{
     char broadcaster_user_id[TWITCH_EVENTSUB_ID_SIZE];
     char broadcaster_user_login[TWITCH_EVENTSUB_LOGIN_SIZE];
     char broadcaster_user_name[TWITCH_EVENTSUB_NAME_SIZE];
@@ -39,6 +55,15 @@ typedef struct
 
     char message_id[TWITCH_EVENTSUB_ID_SIZE];
     char text[TWITCH_EVENTSUB_MESSAGE_SIZE];
+
+    /* Roles read from the badges array in channel.chat.message. */
+    int is_broadcaster;
+    int is_moderator;
+    int is_vip;
+    int is_subscriber; /* Includes founder badges. */
+    /* Follower status is filled by the Helix lookup, not chat badges. */
+    int is_follower;
+    int follower_status_known;
 
 } TwitchChatMessage;
 
@@ -72,6 +97,11 @@ int twitch_eventsub_reconnect_path(
 BotResult twitch_eventsub_parse_chat_message(
     const char *json,
     TwitchChatMessage *message
+);
+
+BotResult twitch_eventsub_parse_channel_points_redemption(
+    const char *json,
+    TwitchChannelPointsRedemption *redemption
 );
 
 #endif

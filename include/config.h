@@ -31,6 +31,7 @@ typedef struct
     char bot_login[CONFIG_STRING_SIZE];
     char bot_user_id[CONFIG_STRING_SIZE];
     int shoutout_scope_granted; /* Set from validated OAuth scopes. */
+    int followers_scope_granted; /* Required for Get Channel Followers. */
 
 } TwitchConfig;
 
@@ -120,6 +121,12 @@ typedef struct
     int enabled;
 } StreamReportConfig;
 
+typedef struct
+{
+    int enabled;
+    int announce_redemptions;
+} ChannelPointsConfig;
+
 /* Loopback-only Web dashboard; disabled when local port is unavailable. */
 typedef struct
 {
@@ -156,6 +163,7 @@ typedef struct
     PromoConfig promo;
     RaidConfig raids;
     StreamReportConfig stream_report;
+    ChannelPointsConfig channel_points;
     DashboardConfig dashboard;
     CooldownConfig cooldowns;
     SoundConfig sounds[SOUND_MAX_COUNT];

@@ -384,7 +384,8 @@ typedef enum
 {
     SUB_CHAT,
     SUB_FOLLOW,
-    SUB_RAID
+    SUB_RAID,
+    SUB_CHANNEL_POINTS
 } EventSubTopic;
 
 static BotResult twitch_eventsub_subscribe_topic(
@@ -404,8 +405,11 @@ static BotResult twitch_eventsub_subscribe_topic(
     wchar_t headers[4096];
 
     if (!config || !session_id || !session_id[0] ||
-        !config->broadcaster_id[0] || !config->bot_user_id[0] ||
+        !config->broadcaster_id[0] ||
         !config->access_token[0] || !config->client_id[0])
+        return BOT_ERR_CONFIG;
+    if ((topic == SUB_CHAT || topic == SUB_FOLLOW) &&
+        !config->bot_user_id[0])
         return BOT_ERR_CONFIG;
 
     if (topic == SUB_CHAT)
@@ -424,12 +428,20 @@ static BotResult twitch_eventsub_subscribe_topic(
                            "\"broadcaster_user_id\":\"%s\",\"moderator_user_id\":\"%s\"",
                            config->broadcaster_id, config->bot_user_id);
     }
-    else
+    else if (topic == SUB_RAID)
     {
         type = "channel.raid";
         version = "1";
         written = snprintf(condition, sizeof(condition),
                            "\"to_broadcaster_user_id\":\"%s\"",
+                           config->broadcaster_id);
+    }
+    else
+    {
+        type = "channel.channel_points_custom_reward_redemption.add";
+        version = "1";
+        written = snprintf(condition, sizeof(condition),
+                           "\"broadcaster_user_id\":\"%s\"",
                            config->broadcaster_id);
     }
 
@@ -474,6 +486,8 @@ static BotResult twitch_eventsub_subscribe_topic(
             log_warning("Twitch EventSub response: %s", response.body);
         if (topic == SUB_FOLLOW && (status_code == 401 || status_code == 403))
             log_warning("Follow events need moderator:read:followers; reauthorize the moderator bot account.");
+        if (topic == SUB_CHANNEL_POINTS && (status_code == 401 || status_code == 403))
+            log_warning("Channel Points events need broadcaster OAuth scope channel:read:redemptions.");
         http_response_free(&response);
         return (status_code == 401 || status_code == 403)
             ? BOT_ERR_AUTH : BOT_ERR_TWITCH;
@@ -505,6 +519,14 @@ BotResult twitch_eventsub_subscribe_raid(
 )
 {
     return twitch_eventsub_subscribe_topic(config, session_id, SUB_RAID);
+}
+
+BotResult twitch_eventsub_subscribe_channel_points(
+    const TwitchConfig *config,
+    const char *session_id
+)
+{
+    return twitch_eventsub_subscribe_topic(config, session_id, SUB_CHANNEL_POINTS);
 }
 
 void twitch_eventsub_ws_close(

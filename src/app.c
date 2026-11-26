@@ -17,6 +17,7 @@
 #include "obs_websocket.h"
 #include "category_sync.h"
 #include "obs_director.h"
+#include "channel_points.h"
 #include "platform.h"
 #include "telegram_api.h"
 #include "http_client.h"
@@ -497,11 +498,16 @@ static BotResult validate_current_token(
     );
 
     config->shoutout_scope_granted = 0;
+    config->followers_scope_granted = 0;
     {
         size_t i;
         for (i = 0; i < validation.scope_count; ++i)
+        {
             if (strcmp(validation.scopes[i], "moderator:manage:shoutouts") == 0)
                 config->shoutout_scope_granted = 1;
+            else if (strcmp(validation.scopes[i], "moderator:read:followers") == 0)
+                config->followers_scope_granted = 1;
+        }
     }
 
 
@@ -745,6 +751,12 @@ static BotResult ensure_twitch_auth(
             );
 
 
+        if (result == BOT_OK && !config->twitch.followers_scope_granted)
+        {
+            log_warning("Twitch OAuth lacks moderator:read:followers; requesting a fresh authorization");
+            result = BOT_ERR_AUTH;
+        }
+
         if (result == BOT_OK && config->raids.auto_shoutout &&
             !config->twitch.shoutout_scope_granted)
         {
@@ -818,6 +830,12 @@ static BotResult ensure_twitch_auth(
                         &config->twitch
                     );
 
+
+                if (result == BOT_OK && !config->twitch.followers_scope_granted)
+                {
+                    log_warning("Refreshed Twitch token lacks moderator:read:followers; fresh authorization is required");
+                    result = BOT_ERR_AUTH;
+                }
 
                 if (result == BOT_OK && config->raids.auto_shoutout &&
                     !config->twitch.shoutout_scope_granted)
@@ -909,6 +927,12 @@ static BotResult ensure_twitch_auth(
 
     if (result != BOT_OK)
         return result;
+
+    if (!config->twitch.followers_scope_granted)
+    {
+        log_error("Twitch authorization completed without moderator:read:followers");
+        return BOT_ERR_AUTH;
+    }
 
     if (config->raids.auto_shoutout &&
         !config->twitch.shoutout_scope_granted)
@@ -2319,6 +2343,46 @@ static BotResult process_twitch_chat_notification(
     {
         return result;
     }
+
+    if (chat_message.chatter_user_id[0] != '\0')
+    {
+        if (chat_message.is_broadcaster)
+        {
+            chat_message.is_follower = 0;
+            chat_message.follower_status_known = 1;
+        }
+        else
+        {
+            int is_follower = 0;
+            BotResult follower_result = twitch_get_channel_follower_status(
+                &config->twitch, chat_message.chatter_user_id, &is_follower);
+            if (follower_result == BOT_OK)
+            {
+                chat_message.is_follower = is_follower;
+                chat_message.follower_status_known = 1;
+            }
+            else if (follower_result == BOT_ERR_AUTH)
+            {
+                static int follower_permission_warning_logged = 0;
+                if (!follower_permission_warning_logged)
+                {
+                    log_warning("Follower role cannot be resolved. Make the Twitch bot account a moderator of the channel; chat, VIP, subscriber and moderator role detection will continue.");
+                    follower_permission_warning_logged = 1;
+                }
+            }
+            else
+                log_debug("Follower lookup unavailable for %s (result=%d)",
+                          chat_message.chatter_user_login, (int)follower_result);
+        }
+    }
+
+    log_debug("Chat roles for %s: VIP=%s, subscriber=%s, moderator=%s, follower=%s",
+              chat_message.chatter_user_name,
+              chat_message.is_vip ? "yes" : "no",
+              chat_message.is_subscriber ? "yes" : "no",
+              chat_message.is_moderator ? "yes" : "no",
+              chat_message.follower_status_known
+                  ? (chat_message.is_follower ? "yes" : "no") : "unknown");
 
     log_info(
         "Twitch chat: %s: %s",
@@ -3766,6 +3830,7 @@ static BotResult run_bot_loop(
     DashboardObs obs_state = {0};
     CategorySync category_sync = {0};
     ObsDirector obs_director = {0};
+    ChannelPointsWorker channel_points = {0};
     DWORD last_obs_poll = 0;
     unsigned int obs_result_sequence = 0;
     char obs_result[160] = "";
@@ -3817,6 +3882,10 @@ static BotResult run_bot_loop(
         category_sync_stop(&category_sync);
         return result;
     }
+
+    result = channel_points_start(config, &channel_points);
+    if (result != BOT_OK)
+        log_warning("Channel Points worker did not start: %s", bot_result_to_string(result));
 
     previous_live_state =
         initial_stream.is_live;
@@ -4290,6 +4359,43 @@ static BotResult run_bot_loop(
             }
         }
 
+
+        /*
+         * ----------------------------------------------------
+         * TWITCH CHANNEL POINTS REDEMPTIONS
+         * ----------------------------------------------------
+         * The broadcaster EventSub worker only queues events.
+         * Chat/OBS side effects remain on the main bot thread.
+         */
+        if (chat_connected)
+        {
+            TwitchChannelPointsRedemption redemption;
+            while (channel_points_pop(&channel_points, &redemption))
+            {
+                log_info("Channel Points redemption: user=%s reward=%s cost=%d id=%s",
+                         redemption.user_login, redemption.reward_title,
+                         redemption.reward_cost, redemption.redemption_id);
+                if (config->channel_points.announce_redemptions)
+                {
+                    char announcement[768];
+                    int written = snprintf(
+                        announcement, sizeof(announcement),
+                        "🍊 @%s активировал награду «%s» за %d баллов канала!",
+                        redemption.user_name, redemption.reward_title,
+                        redemption.reward_cost);
+                    if (written > 0 && (size_t)written < sizeof(announcement))
+                    {
+                        BotResult announce_result = twitch_chat_send_message(
+                            &config->twitch, announcement);
+                        if (announce_result != BOT_OK)
+                            log_warning("Channel Points chat announcement failed: %s",
+                                        bot_result_to_string(announce_result));
+                    }
+                }
+                SecureZeroMemory(&redemption, sizeof(redemption));
+            }
+        }
+
         /*
          * Music 0.9: start one background download and play the first
          * queued request. Automatic next-track handling comes later.
@@ -4671,6 +4777,7 @@ static BotResult run_bot_loop(
 		}
     }
 
+    channel_points_stop(&channel_points);
     obs_director_stop(&obs_director);
     category_sync_stop(&category_sync);
     dashboard_stop();

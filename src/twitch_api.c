@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <wchar.h>
+#include <time.h>
 
 #define TWITCH_API_HOST L"api.twitch.tv"
 
@@ -656,4 +657,211 @@ BotResult twitch_update_channel_category(
                 response.body ? response.body : "(empty response)");
     http_response_free(&response);
     return BOT_ERR_TWITCH;
+}
+
+
+/*
+ * Twitch does not include follower status in channel.chat.message badges.
+ * Resolve it through Get Channel Followers and cache both positive and
+ * negative results for five minutes. This cache is used on the chat thread.
+ */
+#define TWITCH_FOLLOWER_CACHE_CAPACITY 512
+#define TWITCH_FOLLOWER_CACHE_TTL_SECONDS (5 * 60)
+
+typedef struct
+{
+    char broadcaster_id[CONFIG_STRING_SIZE];
+    char user_id[CONFIG_STRING_SIZE];
+    time_t checked_at;
+    int is_follower;
+    int valid;
+} TwitchFollowerCacheEntry;
+
+static TwitchFollowerCacheEntry g_follower_cache[TWITCH_FOLLOWER_CACHE_CAPACITY];
+static size_t g_follower_cache_next = 0;
+static int g_follower_lookup_permission_denied = 0;
+
+static int twitch_api_numeric_id(const char *id)
+{
+    const unsigned char *p = (const unsigned char *)id;
+    if (!p || !*p) return 0;
+    while (*p)
+    {
+        if (*p < '0' || *p > '9') return 0;
+        ++p;
+    }
+    return 1;
+}
+
+static int twitch_follower_cache_get(const char *broadcaster_id,
+                                     const char *user_id,
+                                     time_t now,
+                                     int *is_follower)
+{
+    size_t i;
+    if (!broadcaster_id || !user_id || !is_follower) return 0;
+    for (i = 0; i < TWITCH_FOLLOWER_CACHE_CAPACITY; ++i)
+    {
+        TwitchFollowerCacheEntry *entry = &g_follower_cache[i];
+        if (!entry->valid ||
+            strcmp(entry->broadcaster_id, broadcaster_id) != 0 ||
+            strcmp(entry->user_id, user_id) != 0)
+            continue;
+        if (now >= entry->checked_at &&
+            now - entry->checked_at <= TWITCH_FOLLOWER_CACHE_TTL_SECONDS)
+        {
+            *is_follower = entry->is_follower;
+            return 1;
+        }
+        entry->valid = 0;
+    }
+    return 0;
+}
+
+static void twitch_follower_cache_put(const char *broadcaster_id,
+                                      const char *user_id,
+                                      int is_follower,
+                                      time_t checked_at)
+{
+    size_t i;
+    TwitchFollowerCacheEntry *entry = NULL;
+    for (i = 0; i < TWITCH_FOLLOWER_CACHE_CAPACITY; ++i)
+    {
+        if (g_follower_cache[i].valid &&
+            strcmp(g_follower_cache[i].broadcaster_id, broadcaster_id) == 0 &&
+            strcmp(g_follower_cache[i].user_id, user_id) == 0)
+        {
+            entry = &g_follower_cache[i];
+            break;
+        }
+    }
+    if (!entry)
+    {
+        entry = &g_follower_cache[g_follower_cache_next];
+        g_follower_cache_next =
+            (g_follower_cache_next + 1U) % TWITCH_FOLLOWER_CACHE_CAPACITY;
+    }
+    memset(entry, 0, sizeof(*entry));
+    snprintf(entry->broadcaster_id, sizeof(entry->broadcaster_id), "%s", broadcaster_id);
+    snprintf(entry->user_id, sizeof(entry->user_id), "%s", user_id);
+    entry->checked_at = checked_at;
+    entry->is_follower = is_follower ? 1 : 0;
+    entry->valid = 1;
+}
+
+void twitch_follower_cache_mark(const TwitchConfig *config,
+                                const char *user_id,
+                                int is_follower)
+{
+    if (!config || !twitch_api_numeric_id(config->broadcaster_id) ||
+        !twitch_api_numeric_id(user_id))
+        return;
+    twitch_follower_cache_put(config->broadcaster_id, user_id,
+                              is_follower, time(NULL));
+}
+
+BotResult twitch_get_channel_follower_status(const TwitchConfig *config,
+                                             const char *user_id,
+                                             int *is_follower)
+{
+    wchar_t wide_client_id[1024];
+    wchar_t wide_access_token[2048];
+    wchar_t wide_broadcaster_id[128];
+    wchar_t wide_user_id[128];
+    wchar_t headers[4096];
+    wchar_t path[512];
+    HttpResponse response = {0};
+    cJSON *root = NULL;
+    const cJSON *data;
+    BotResult result;
+    time_t now;
+    int i, count, found = 0;
+
+    if (!config || !user_id || !is_follower ||
+        !config->client_id[0] || !config->access_token[0] ||
+        !twitch_api_numeric_id(config->broadcaster_id) ||
+        !twitch_api_numeric_id(user_id))
+        return BOT_ERR_CONFIG;
+
+    *is_follower = 0;
+    if (!config->followers_scope_granted || g_follower_lookup_permission_denied)
+        return BOT_ERR_AUTH;
+
+    now = time(NULL);
+    if (twitch_follower_cache_get(config->broadcaster_id, user_id, now,
+                                  is_follower))
+        return BOT_OK;
+
+    if (!utf8_to_wide(config->client_id, wide_client_id,
+                      (int)(sizeof(wide_client_id) / sizeof(wide_client_id[0]))) ||
+        !utf8_to_wide(config->access_token, wide_access_token,
+                      (int)(sizeof(wide_access_token) / sizeof(wide_access_token[0]))) ||
+        !utf8_to_wide(config->broadcaster_id, wide_broadcaster_id,
+                      (int)(sizeof(wide_broadcaster_id) / sizeof(wide_broadcaster_id[0]))) ||
+        !utf8_to_wide(user_id, wide_user_id,
+                      (int)(sizeof(wide_user_id) / sizeof(wide_user_id[0]))))
+        return BOT_ERR_TWITCH;
+
+    swprintf(headers, sizeof(headers) / sizeof(headers[0]),
+             L"Authorization: Bearer %ls\r\nClient-Id: %ls\r\n",
+             wide_access_token, wide_client_id);
+    swprintf(path, sizeof(path) / sizeof(path[0]),
+             L"/helix/channels/followers?broadcaster_id=%ls&user_id=%ls",
+             wide_broadcaster_id, wide_user_id);
+
+    result = http_get(L"api.twitch.tv", path, headers, &response);
+    if (result != BOT_OK)
+    {
+        http_response_free(&response);
+        return result;
+    }
+
+    if (response.status_code == 401 || response.status_code == 403)
+    {
+        g_follower_lookup_permission_denied = 1;
+        log_warning("Follower lookup denied: the OAuth account must be the broadcaster or a channel moderator and have moderator:read:followers");
+        http_response_free(&response);
+        return BOT_ERR_AUTH;
+    }
+    if (response.status_code != 200 || !response.body)
+    {
+        log_warning("Twitch Get Channel Followers returned HTTP %lu",
+                    response.status_code);
+        http_response_free(&response);
+        return BOT_ERR_TWITCH;
+    }
+
+    root = cJSON_Parse(response.body);
+    http_response_free(&response);
+    if (!root) return BOT_ERR_JSON;
+
+    data = cJSON_GetObjectItemCaseSensitive(root, "data");
+    if (!cJSON_IsArray(data))
+    {
+        cJSON_Delete(root);
+        return BOT_ERR_JSON;
+    }
+
+    count = cJSON_GetArraySize(data);
+    for (i = 0; i < count; ++i)
+    {
+        const cJSON *entry = cJSON_GetArrayItem(data, i);
+        const cJSON *returned_user_id =
+            cJSON_GetObjectItemCaseSensitive(entry, "user_id");
+        if (!cJSON_IsString(returned_user_id) || !returned_user_id->valuestring)
+        {
+            cJSON_Delete(root);
+            return BOT_ERR_JSON;
+        }
+        if (strcmp(returned_user_id->valuestring, user_id) == 0)
+        {
+            found = 1;
+            break;
+        }
+    }
+
+    cJSON_Delete(root);
+    *is_follower = found;
+    twitch_follower_cache_put(config->broadcaster_id, user_id, found, now);
+    return BOT_OK;
 }

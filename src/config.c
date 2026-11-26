@@ -17,6 +17,7 @@ typedef enum
     SECTION_PROMO,
     SECTION_RAIDS,
     SECTION_STREAM_REPORT,
+    SECTION_CHANNEL_POINTS,
     SECTION_DASHBOARD,
     SECTION_COOLDOWNS,
     SECTION_SOUNDS,
@@ -99,6 +100,7 @@ static ConfigSection parse_section(
     if (strcmp(line, "[promo]") == 0) return SECTION_PROMO;
     if (strcmp(line, "[raids]") == 0) return SECTION_RAIDS;
     if (strcmp(line, "[stream_report]") == 0) return SECTION_STREAM_REPORT;
+    if (strcmp(line, "[channel_points]") == 0) return SECTION_CHANNEL_POINTS;
     if (strcmp(line, "[dashboard]") == 0) return SECTION_DASHBOARD;
     if (strcmp(line, "[cooldowns]") == 0) return SECTION_COOLDOWNS;
     if (strcmp(line, "[sounds]") == 0) return SECTION_SOUNDS;
@@ -302,6 +304,15 @@ static void parse_key_value(
         case SECTION_STREAM_REPORT:
             if (strcmp(key, "enabled") == 0)
                 config->stream_report.enabled =
+                    strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
+            break;
+
+        case SECTION_CHANNEL_POINTS:
+            if (strcmp(key, "enabled") == 0)
+                config->channel_points.enabled =
+                    strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
+            else if (strcmp(key, "announce_redemptions") == 0)
+                config->channel_points.announce_redemptions =
                     strcmp(value, "true") == 0 || strcmp(value, "1") == 0;
             break;
 
@@ -519,6 +530,8 @@ BotResult config_load(
     config->promo.max_minutes = 10;
     config->raids.auto_shoutout = 0;
     config->stream_report.enabled = 1;
+    config->channel_points.enabled = 0;
+    config->channel_points.announce_redemptions = 1;
     config->dashboard.enabled = 1;
     config->dashboard.port = 8765;
     config->cooldowns.normal_seconds = 10;
