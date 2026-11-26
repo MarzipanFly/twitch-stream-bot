@@ -271,6 +271,8 @@ BotResult twitch_eventsub_parse_chat_message(
     cJSON *subscription_type = NULL;
     cJSON *event = NULL;
     cJSON *message_object = NULL;
+    cJSON *badges = NULL;
+    int badge_index;
 
     if (json == NULL || message == NULL)
     {
@@ -345,6 +347,33 @@ BotResult twitch_eventsub_parse_chat_message(
         sizeof(message->chatter_user_name),
         cJSON_GetObjectItemCaseSensitive(event, "chatter_user_name")
     );
+
+    message->is_broadcaster =
+        message->chatter_user_id[0] != '\0' &&
+        message->broadcaster_user_id[0] != '\0' &&
+        strcmp(message->chatter_user_id, message->broadcaster_user_id) == 0;
+
+    badges = cJSON_GetObjectItemCaseSensitive(event, "badges");
+    if (cJSON_IsArray(badges))
+    {
+        for (badge_index = 0; badge_index < cJSON_GetArraySize(badges); ++badge_index)
+        {
+            const cJSON *badge = cJSON_GetArrayItem(badges, badge_index);
+            const cJSON *set_id = cJSON_GetObjectItemCaseSensitive(badge, "set_id");
+            if (!cJSON_IsString(set_id) || !set_id->valuestring)
+                continue;
+
+            if (strcmp(set_id->valuestring, "broadcaster") == 0)
+                message->is_broadcaster = 1;
+            else if (strcmp(set_id->valuestring, "moderator") == 0)
+                message->is_moderator = 1;
+            else if (strcmp(set_id->valuestring, "vip") == 0)
+                message->is_vip = 1;
+            else if (strcmp(set_id->valuestring, "subscriber") == 0 ||
+                     strcmp(set_id->valuestring, "founder") == 0)
+                message->is_subscriber = 1;
+        }
+    }
 
     copy_json_string(
         message->message_id,

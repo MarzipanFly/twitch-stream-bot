@@ -31,6 +31,7 @@ typedef struct
     char bot_login[CONFIG_STRING_SIZE];
     char bot_user_id[CONFIG_STRING_SIZE];
     int shoutout_scope_granted; /* Set from validated OAuth scopes. */
+    int followers_scope_granted; /* Required for Get Channel Followers. */
 
 } TwitchConfig;
 

@@ -56,6 +56,15 @@ typedef struct
     char message_id[TWITCH_EVENTSUB_ID_SIZE];
     char text[TWITCH_EVENTSUB_MESSAGE_SIZE];
 
+    /* Roles read from the badges array in channel.chat.message. */
+    int is_broadcaster;
+    int is_moderator;
+    int is_vip;
+    int is_subscriber; /* Includes founder badges. */
+    /* Follower status is filled by the Helix lookup, not chat badges. */
+    int is_follower;
+    int follower_status_known;
+
 } TwitchChatMessage;
 
 /* Strictly extract EventSub metadata.message_id, never truncate it.
