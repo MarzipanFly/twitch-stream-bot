@@ -381,7 +381,7 @@ static int copy_json_string_strict(char *destination, size_t destination_size,
     size_t length;
     if (!destination || destination_size == 0) return 0;
     destination[0] = '\0';
-    if (!json || cJSON_IsNull(json)) return !required;
+    if (!json || json->type == cJSON_NULL) return !required;
     if (!cJSON_IsString(json) || !json->valuestring) return 0;
     length = strlen(json->valuestring);
     if (length >= destination_size) return 0;
