@@ -498,11 +498,16 @@ static BotResult validate_current_token(
     );
 
     config->shoutout_scope_granted = 0;
+    config->followers_scope_granted = 0;
     {
         size_t i;
         for (i = 0; i < validation.scope_count; ++i)
+        {
             if (strcmp(validation.scopes[i], "moderator:manage:shoutouts") == 0)
                 config->shoutout_scope_granted = 1;
+            else if (strcmp(validation.scopes[i], "moderator:read:followers") == 0)
+                config->followers_scope_granted = 1;
+        }
     }
 
 
@@ -746,6 +751,12 @@ static BotResult ensure_twitch_auth(
             );
 
 
+        if (result == BOT_OK && !config->twitch.followers_scope_granted)
+        {
+            log_warning("Twitch OAuth lacks moderator:read:followers; requesting a fresh authorization");
+            result = BOT_ERR_AUTH;
+        }
+
         if (result == BOT_OK && config->raids.auto_shoutout &&
             !config->twitch.shoutout_scope_granted)
         {
@@ -819,6 +830,12 @@ static BotResult ensure_twitch_auth(
                         &config->twitch
                     );
 
+
+                if (result == BOT_OK && !config->twitch.followers_scope_granted)
+                {
+                    log_warning("Refreshed Twitch token lacks moderator:read:followers; fresh authorization is required");
+                    result = BOT_ERR_AUTH;
+                }
 
                 if (result == BOT_OK && config->raids.auto_shoutout &&
                     !config->twitch.shoutout_scope_granted)
@@ -910,6 +927,12 @@ static BotResult ensure_twitch_auth(
 
     if (result != BOT_OK)
         return result;
+
+    if (!config->twitch.followers_scope_granted)
+    {
+        log_error("Twitch authorization completed without moderator:read:followers");
+        return BOT_ERR_AUTH;
+    }
 
     if (config->raids.auto_shoutout &&
         !config->twitch.shoutout_scope_granted)
@@ -2320,6 +2343,46 @@ static BotResult process_twitch_chat_notification(
     {
         return result;
     }
+
+    if (chat_message.chatter_user_id[0] != '\0')
+    {
+        if (chat_message.is_broadcaster)
+        {
+            chat_message.is_follower = 0;
+            chat_message.follower_status_known = 1;
+        }
+        else
+        {
+            int is_follower = 0;
+            BotResult follower_result = twitch_get_channel_follower_status(
+                &config->twitch, chat_message.chatter_user_id, &is_follower);
+            if (follower_result == BOT_OK)
+            {
+                chat_message.is_follower = is_follower;
+                chat_message.follower_status_known = 1;
+            }
+            else if (follower_result == BOT_ERR_AUTH)
+            {
+                static int follower_permission_warning_logged = 0;
+                if (!follower_permission_warning_logged)
+                {
+                    log_warning("Follower role cannot be resolved. Make the Twitch bot account a moderator of the channel; chat, VIP, subscriber and moderator role detection will continue.");
+                    follower_permission_warning_logged = 1;
+                }
+            }
+            else
+                log_debug("Follower lookup unavailable for %s (result=%d)",
+                          chat_message.chatter_user_login, (int)follower_result);
+        }
+    }
+
+    log_debug("Chat roles for %s: VIP=%s, subscriber=%s, moderator=%s, follower=%s",
+              chat_message.chatter_user_name,
+              chat_message.is_vip ? "yes" : "no",
+              chat_message.is_subscriber ? "yes" : "no",
+              chat_message.is_moderator ? "yes" : "no",
+              chat_message.follower_status_known
+                  ? (chat_message.is_follower ? "yes" : "no") : "unknown");
 
     log_info(
         "Twitch chat: %s: %s",

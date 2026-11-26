@@ -101,6 +101,36 @@ int main(void)
         assert(twitch_eventsub_parse_channel_points_redemption(redemption_json, NULL) == BOT_ERR_CONFIG);
     }
 
-    puts("EventSub metadata, reconnect and Channel Points parsing tests passed");
+    {
+        const char *chat_json =
+            "{\"payload\":{\"subscription\":{\"type\":\"channel.chat.message\"},"
+            "\"event\":{"
+            "\"broadcaster_user_id\":\"1001\","
+            "\"broadcaster_user_login\":\"aleg_opelsin1\","
+            "\"broadcaster_user_name\":\"aleg_opelsin1\","
+            "\"chatter_user_id\":\"2002\","
+            "\"chatter_user_login\":\"viewer_login\","
+            "\"chatter_user_name\":\"ViewerName\","
+            "\"message_id\":\"chat-1\","
+            "\"message\":{\"text\":\"!баланс\"},"
+            "\"badges\":["
+            "{\"set_id\":\"moderator\",\"id\":\"1\",\"info\":\"\"},"
+            "{\"set_id\":\"vip\",\"id\":\"1\",\"info\":\"\"},"
+            "{\"set_id\":\"subscriber\",\"id\":\"12\",\"info\":\"16\"},"
+            "{\"set_id\":\"founder\",\"id\":\"1\",\"info\":\"40\"},"
+            "{\"set_id\":\"unknown-badge\",\"id\":\"1\",\"info\":\"\"}"
+            "]}}}";
+        TwitchChatMessage chat;
+        assert(twitch_eventsub_parse_chat_message(chat_json, &chat) == BOT_OK);
+        assert(chat.is_moderator == 1);
+        assert(chat.is_vip == 1);
+        assert(chat.is_subscriber == 1);
+        assert(chat.is_broadcaster == 0);
+        assert(chat.is_follower == 0);
+        assert(chat.follower_status_known == 0);
+        assert(strcmp(chat.text, "!баланс") == 0);
+    }
+
+    puts("EventSub metadata, reconnect, Channel Points and chat role parsing tests passed");
     return 0;
 }

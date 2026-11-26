@@ -35,7 +35,7 @@ jobs:
         run: |
           for /f "usebackq delims=" %%p in (`"%ProgramFiles(x86)%\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -property installationPath`) do set "VS_DIR=%%p"
           call "%VS_DIR%\\Common7\\Tools\\VsDevCmd.bat" -arch=x64
-          cl /nologo /W3 /TC /std:c11 /Iinclude /Ithird_party/cjson /c src\\app.c src\\config.c src\\channel_points.c src\\token_store.c src\\dashboard_server.c src\\dashboard_settings.c src\\twitch_eventsub.c src\\twitch_eventsub_ws.c src\\eventsub_dedupe.c src\\main.c
+          cl /nologo /W3 /TC /std:c11 /Iinclude /Ithird_party/cjson /c src\\app.c src\\config.c src\\channel_points.c src\\token_store.c src\\dashboard_server.c src\\dashboard_settings.c src\\twitch_api.c src\\achievements.c src\\twitch_eventsub.c src\\twitch_eventsub_ws.c src\\eventsub_dedupe.c src\\main.c
       - name: Compile and exercise local dashboard (Windows)
         shell: cmd
         run: |
