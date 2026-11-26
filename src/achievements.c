@@ -100,6 +100,9 @@ BotResult achievements_process_event(const TwitchConfig *twitch,
         return BOT_OK;
     }
 
+    if (kind == ACHIEVEMENT_EVENT_FOLLOW)
+        twitch_follower_cache_mark(twitch, id, 1);
+
     profile = viewer_profile_get_or_create(id, login, name);
     if (!profile)
     {
