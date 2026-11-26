@@ -65,6 +65,42 @@ int main(void)
             valid_reconnect, url, 6) == BOT_ERR_JSON);
         assert(!url[0]);
     }
-    puts("EventSub metadata and reconnect URL parsing tests passed");
+    {
+        const char *redemption_json =
+            "{\"metadata\":{\"message_type\":\"notification\","
+            "\"message_id\":\"evt-redemption-1\"},"
+            "\"payload\":{"
+            "\"subscription\":{\"type\":"
+            "\"channel.channel_points_custom_reward_redemption.add\"},"
+            "\"event\":{"
+            "\"id\":\"redemption-1\","
+            "\"broadcaster_user_id\":\"1001\","
+            "\"broadcaster_user_login\":\"aleg_opelsin1\","
+            "\"user_id\":\"2002\","
+            "\"user_login\":\"viewer_login\","
+            "\"user_name\":\"ViewerName\","
+            "\"user_input\":\"hello\","
+            "\"reward\":{"
+            "\"id\":\"reward-1\","
+            "\"title\":\"Orange rain\","
+            "\"cost\":250,"
+            "\"prompt\":\"Optional prompt\"}}}}";
+        const char *wrong_type =
+            "{\"payload\":{\"subscription\":{"
+            "\"type\":\"channel.chat.message\"},\"event\":{}}}";
+        TwitchChannelPointsRedemption redemption;
+        assert(twitch_eventsub_parse_channel_points_redemption(redemption_json, &redemption) == BOT_OK);
+        assert(strcmp(redemption.redemption_id, "redemption-1") == 0);
+        assert(strcmp(redemption.broadcaster_user_login, "aleg_opelsin1") == 0);
+        assert(strcmp(redemption.user_login, "viewer_login") == 0);
+        assert(strcmp(redemption.reward_id, "reward-1") == 0);
+        assert(strcmp(redemption.reward_title, "Orange rain") == 0);
+        assert(strcmp(redemption.user_input, "hello") == 0);
+        assert(redemption.reward_cost == 250);
+        assert(twitch_eventsub_parse_channel_points_redemption(wrong_type, &redemption) == BOT_ERR_TWITCH);
+        assert(twitch_eventsub_parse_channel_points_redemption(redemption_json, NULL) == BOT_ERR_CONFIG);
+    }
+
+    puts("EventSub metadata, reconnect and Channel Points parsing tests passed");
     return 0;
 }

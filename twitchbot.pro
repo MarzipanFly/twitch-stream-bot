@@ -11,6 +11,7 @@ INCLUDEPATH += \
 SOURCES += \
     src/app.c \
     src/category_sync.c \
+    src/channel_points.c \
     src/game_detector.c \
     src/obs_director.c \
     src/bot_result.c \
@@ -55,6 +56,7 @@ SOURCES += \
 HEADERS += \
     include/app.h \
     include/category_sync.h \
+    include/channel_points.h \
     include/game_detector.h \
     include/obs_director.h \
     include/bot_result.h \

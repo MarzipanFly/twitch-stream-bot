@@ -56,6 +56,11 @@ BotResult twitch_eventsub_subscribe_raid(
     const char *session_id
 );
 
+BotResult twitch_eventsub_subscribe_channel_points(
+    const TwitchConfig *config,
+    const char *session_id
+);
+
 void twitch_eventsub_ws_close(
     TwitchEventSubWebSocket *client
 );

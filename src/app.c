@@ -17,6 +17,7 @@
 #include "obs_websocket.h"
 #include "category_sync.h"
 #include "obs_director.h"
+#include "channel_points.h"
 #include "platform.h"
 #include "telegram_api.h"
 #include "http_client.h"
@@ -3766,6 +3767,7 @@ static BotResult run_bot_loop(
     DashboardObs obs_state = {0};
     CategorySync category_sync = {0};
     ObsDirector obs_director = {0};
+    ChannelPointsWorker channel_points = {0};
     DWORD last_obs_poll = 0;
     unsigned int obs_result_sequence = 0;
     char obs_result[160] = "";
@@ -3817,6 +3819,10 @@ static BotResult run_bot_loop(
         category_sync_stop(&category_sync);
         return result;
     }
+
+    result = channel_points_start(config, &channel_points);
+    if (result != BOT_OK)
+        log_warning("Channel Points worker did not start: %s", bot_result_to_string(result));
 
     previous_live_state =
         initial_stream.is_live;
@@ -4290,6 +4296,43 @@ static BotResult run_bot_loop(
             }
         }
 
+
+        /*
+         * ----------------------------------------------------
+         * TWITCH CHANNEL POINTS REDEMPTIONS
+         * ----------------------------------------------------
+         * The broadcaster EventSub worker only queues events.
+         * Chat/OBS side effects remain on the main bot thread.
+         */
+        if (chat_connected)
+        {
+            TwitchChannelPointsRedemption redemption;
+            while (channel_points_pop(&channel_points, &redemption))
+            {
+                log_info("Channel Points redemption: user=%s reward=%s cost=%d id=%s",
+                         redemption.user_login, redemption.reward_title,
+                         redemption.reward_cost, redemption.redemption_id);
+                if (config->channel_points.announce_redemptions)
+                {
+                    char announcement[768];
+                    int written = snprintf(
+                        announcement, sizeof(announcement),
+                        "🍊 @%s активировал награду «%s» за %d баллов канала!",
+                        redemption.user_name, redemption.reward_title,
+                        redemption.reward_cost);
+                    if (written > 0 && (size_t)written < sizeof(announcement))
+                    {
+                        BotResult announce_result = twitch_chat_send_message(
+                            &config->twitch, announcement);
+                        if (announce_result != BOT_OK)
+                            log_warning("Channel Points chat announcement failed: %s",
+                                        bot_result_to_string(announce_result));
+                    }
+                }
+                SecureZeroMemory(&redemption, sizeof(redemption));
+            }
+        }
+
         /*
          * Music 0.9: start one background download and play the first
          * queued request. Automatic next-track handling comes later.
@@ -4671,6 +4714,7 @@ static BotResult run_bot_loop(
 		}
     }
 
+    channel_points_stop(&channel_points);
     obs_director_stop(&obs_director);
     category_sync_stop(&category_sync);
     dashboard_stop();
